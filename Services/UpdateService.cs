@@ -30,25 +30,48 @@ public class UpdateService
 
     public string GetCurrentVersion()
     {
-        var assembly = Assembly.GetExecutingAssembly();
-        var versionAttribute = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>();
-        if (versionAttribute != null && !string.IsNullOrEmpty(versionAttribute.InformationalVersion))
+        try
         {
-            return versionAttribute.InformationalVersion;
-        }
-
-        var fileVersionAttribute = assembly.GetCustomAttribute<AssemblyFileVersionAttribute>();
-        if (fileVersionAttribute != null && !string.IsNullOrEmpty(fileVersionAttribute.Version))
-        {
-            // Convert "1.0.0.0" to "1.0.0"
-            var version = fileVersionAttribute.Version;
-            if (version.Split('.').Length == 4)
+            var assembly = Assembly.GetExecutingAssembly();
+            
+            // Try AssemblyInformationalVersion first (this is set by <Version> in .csproj)
+            var versionAttribute = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>();
+            if (versionAttribute != null && !string.IsNullOrEmpty(versionAttribute.InformationalVersion))
             {
-                version = string.Join(".", version.Split('.').Take(3));
+                var version = versionAttribute.InformationalVersion;
+                System.Diagnostics.Debug.WriteLine($"GetCurrentVersion: Found AssemblyInformationalVersion: {version}");
+                return version;
             }
-            return version;
+
+            // Try AssemblyFileVersion (this is set by <FileVersion> in .csproj)
+            var fileVersionAttribute = assembly.GetCustomAttribute<AssemblyFileVersionAttribute>();
+            if (fileVersionAttribute != null && !string.IsNullOrEmpty(fileVersionAttribute.Version))
+            {
+                // Convert "1.0.2.0" to "1.0.2"
+                var version = fileVersionAttribute.Version;
+                if (version.Split('.').Length == 4)
+                {
+                    version = string.Join(".", version.Split('.').Take(3));
+                }
+                System.Diagnostics.Debug.WriteLine($"GetCurrentVersion: Found AssemblyFileVersion: {version}");
+                return version;
+            }
+
+            // Try Assembly.GetName().Version as fallback
+            var assemblyVersion = assembly.GetName().Version;
+            if (assemblyVersion != null)
+            {
+                var version = $"{assemblyVersion.Major}.{assemblyVersion.Minor}.{assemblyVersion.Build}";
+                System.Diagnostics.Debug.WriteLine($"GetCurrentVersion: Found Assembly.GetName().Version: {version}");
+                return version;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"GetCurrentVersion error: {ex.Message}");
         }
 
+        System.Diagnostics.Debug.WriteLine("GetCurrentVersion: Using fallback version 1.0.0");
         return "1.0.0"; // Fallback
     }
 
