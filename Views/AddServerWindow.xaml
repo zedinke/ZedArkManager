@@ -1,0 +1,220 @@
+<Window x:Class="ZedASAManager.Views.AddServerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Name="AddServerWindowControl"
+        Height="800" Width="600"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock x:Name="TitleTextBlock"
+                       FontSize="18"
+                       FontWeight="Bold"
+                       Margin="0,0,0,8"/>
+            <Border BorderBrush="Gray" 
+                    BorderThickness="1" 
+                    Padding="8"
+                    Background="#F5F5F5"
+                    MaxHeight="150">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <TextBlock x:Name="UsedPortsTextBlock"
+                               TextWrapping="Wrap"
+                               FontSize="11"
+                               Foreground="#333"/>
+                </ScrollViewer>
+            </Border>
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" 
+                      VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <!-- Cluster Selection -->
+                <TextBlock x:Name="ClusterLabel" 
+                           Margin="0,0,0,8"/>
+                <ComboBox x:Name="ClusterComboBox"
+                          Margin="0,0,0,16"
+                          DisplayMemberPath="Name"/>
+
+                <!-- Server Folder Name -->
+                <TextBlock x:Name="ServerFolderNameLabel" 
+                           Margin="0,0,0,8"/>
+                <TextBox x:Name="ServerFolderNameTextBox"
+                         Margin="0,0,0,16"
+                         Padding="8"/>
+
+                <!-- Ports (Read-only) -->
+                <TextBlock x:Name="AsaPortLabel" 
+                           Margin="0,0,0,8"/>
+                <TextBox x:Name="AsaPortTextBox"
+                         IsReadOnly="True"
+                         Margin="0,0,0,16"
+                         Padding="8"
+                         Background="LightGray"/>
+
+                <TextBlock x:Name="RconPortLabel" 
+                           Margin="0,0,0,8"/>
+                <TextBox x:Name="RconPortTextBox"
+                         IsReadOnly="True"
+                         Margin="0,0,0,16"
+                         Padding="8"
+                         Background="LightGray"/>
+
+                <!-- Boolean Switches -->
+                <CheckBox x:Name="BattleEyeCheckBox" 
+                          Content="BATTLEEYE"
+                          Margin="0,0,0,8"/>
+                <CheckBox x:Name="ApiCheckBox" 
+                          Content="API"
+                          Margin="0,0,0,8"/>
+                <CheckBox x:Name="RconEnabledCheckBox" 
+                          Content="RCON_ENABLED"
+                          IsChecked="True"
+                          Margin="0,0,0,8"/>
+                <CheckBox x:Name="DisplayPokMonitorMessageCheckBox" 
+                          Content="DISPLAY_POK_MONITOR_MESSAGE"
+                          Margin="0,0,0,8"/>
+                <CheckBox x:Name="RandomStartupDelayCheckBox" 
+                          Content="RANDOM_STARTUP_DELAY"
+                          Margin="0,0,0,8"/>
+                <CheckBox x:Name="CpuOptimizationCheckBox" 
+                          Content="CPU_OPTIMIZATION"
+                          IsChecked="True"
+                          Margin="0,0,0,8"/>
+                <CheckBox x:Name="UpdateServerCheckBox" 
+                          Content="UPDATE_SERVER"
+                          IsChecked="True"
+                          Margin="0,0,0,8"/>
+                <CheckBox x:Name="EnableMotdCheckBox" 
+                          Content="ENABLE_MOTD"
+                          IsChecked="True"
+                          Margin="0,0,0,8"/>
+
+                <!-- Text/Value Fields -->
+                <TextBlock x:Name="MotdLabel" 
+                           Margin="0,0,0,8"/>
+                <TextBox x:Name="MotdTextBox"
+                         Text="Welcome To Rexodon Cluster!"
+                         Margin="0,0,0,16"
+                         Padding="8"/>
+
+                <TextBlock x:Name="MotdDurationLabel" 
+                           Margin="0,0,0,8"/>
+                <TextBox x:Name="MotdDurationTextBox"
+                         Text="30"
+                         Margin="0,0,0,16"
+                         Padding="8"/>
+
+                <TextBlock x:Name="MapNameLabel" 
+                           Margin="0,0,0,8"/>
+                <TextBox x:Name="MapNameTextBox"
+                         Text="Aberration"
+                         Margin="0,0,0,16"
+                         Padding="8"/>
+
+                <TextBlock x:Name="SessionNameLabel" 
+                           Margin="0,0,0,8"/>
+                <TextBox x:Name="SessionNameTextBox"
+                         Text="Rexodon - Aberration"
+                         Margin="0,0,0,16"
+                         Padding="8"/>
+
+                <TextBlock x:Name="ServerAdminPasswordLabel" 
+                           Margin="0,0,0,8"/>
+                <TextBox x:Name="ServerAdminPasswordTextBox"
+                         Text="Rexike007..."
+                         Margin="0,0,0,16"
+                         Padding="8"/>
+
+                <TextBlock x:Name="ServerPasswordLabel" 
+                           Margin="0,0,0,8"/>
+                <TextBox x:Name="ServerPasswordTextBox"
+                         Margin="0,0,0,16"
+                         Padding="8"/>
+
+                <TextBlock x:Name="MaxPlayersLabel" 
+                           Margin="0,0,0,8"/>
+                <TextBox x:Name="MaxPlayersTextBox"
+                         Text="30"
+                         Margin="0,0,0,16"
+                         Padding="8"/>
+
+                <CheckBox x:Name="ShowAdminCommandsInChatCheckBox" 
+                          Content="SHOW_ADMIN_COMMANDS_IN_CHAT"
+                          Margin="0,0,0,8"/>
+
+                <TextBlock x:Name="ClusterIdLabel" 
+                           Margin="0,0,0,8"/>
+                <TextBox x:Name="ClusterIdTextBox"
+                         IsReadOnly="True"
+                         Margin="0,0,0,16"
+                         Padding="8"
+                         Background="LightGray"/>
+
+                <TextBlock x:Name="ModIdsLabel" 
+                           Margin="0,0,0,8"/>
+                <TextBox x:Name="ModIdsTextBox"
+                         Text="940975,928548,929800,929420,936457,1301110"
+                         Margin="0,0,0,16"
+                         Padding="8"/>
+
+                <TextBlock x:Name="PassiveModsLabel" 
+                           Margin="0,0,0,8"/>
+                <TextBox x:Name="PassiveModsTextBox"
+                         Text="1122696"
+                         Margin="0,0,0,16"
+                         Padding="8"/>
+
+                <TextBlock x:Name="CustomServerArgsLabel" 
+                           Margin="0,0,0,8"/>
+                <TextBox x:Name="CustomServerArgsTextBox"
+                         Text="-NoTiledGPU -useallavailablecores -lowmemory -nosteamclient -log"
+                         Margin="0,0,0,16"
+                         Padding="8"/>
+
+                <TextBlock x:Name="MemLimitLabel" 
+                           Margin="0,0,0,8"/>
+                <TextBox x:Name="MemLimitTextBox"
+                         Text="20G"
+                         Margin="0,0,0,16"
+                         Padding="8"/>
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="2" 
+                    Orientation="Vertical"
+                    Margin="0,16,0,0">
+            <ProgressBar x:Name="ProgressBar"
+                        Height="20"
+                        Margin="0,0,0,8"
+                        Visibility="Collapsed"
+                        IsIndeterminate="True"/>
+            <TextBlock x:Name="StatusTextBlock"
+                       Margin="0,0,0,8"
+                       Visibility="Collapsed"
+                       HorizontalAlignment="Center"/>
+            <StackPanel Orientation="Horizontal" 
+                        HorizontalAlignment="Right">
+                <Button x:Name="CreateButton"
+                        Content="Létrehozás"
+                        Padding="12,6"
+                        Margin="0,0,8,0"
+                        Click="Create_Click"
+                        IsDefault="True"/>
+                <Button x:Name="CancelButton"
+                        Content="Mégse"
+                        Padding="12,6"
+                        Click="Cancel_Click"
+                        IsCancel="True"/>
+            </StackPanel>
+        </StackPanel>
+    </Grid>
+</Window>

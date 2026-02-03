@@ -1,0 +1,342 @@
+﻿<Window x:Class="ZedASAManager.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:lvc="clr-namespace:LiveCharts.Wpf;assembly=LiveCharts.Wpf"
+        xmlns:local="clr-namespace:ZedASAManager.Utilities"
+        xmlns:views="clr-namespace:ZedASAManager.Views"
+        Title="ARK ASA Cluster Manager" Height="800" Width="1200"
+        WindowStartupLocation="CenterScreen">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Top Bar -->
+        <Border Grid.Row="0" Background="#6200EA" Padding="16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" 
+                           Text="ARK ASA Cluster Manager" 
+                           Foreground="White"
+                           FontSize="18"
+                           FontWeight="Bold"
+                           VerticalAlignment="Center"/>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <TextBlock Text="{Binding CurrentUsername}" 
+                               Foreground="White" 
+                               VerticalAlignment="Center" 
+                               Margin="0,0,16,0"
+                               FontSize="14"/>
+                    
+                    <ComboBox x:Name="ServerComboBox"
+                              ItemsSource="{Binding SavedServers}"
+                              SelectedItem="{Binding SelectedSavedServer}"
+                              DisplayMemberPath="Name"
+                              Width="200"
+                              Margin="0,0,8,0"
+                              VerticalAlignment="Center"/>
+                    
+                    <Button Content="Szerver Hozzáadása" 
+                            Command="{Binding AddSavedServerCommand}"
+                            Margin="0,0,8,0"
+                            Padding="12,6"/>
+                    
+                    <Button Content="Szerver Törlése" 
+                            Command="{Binding RemoveSavedServerCommand}"
+                            Margin="0,0,8,0"
+                            Padding="12,6"/>
+                    <Ellipse Width="12" Height="12" 
+                             Margin="0,0,8,0"
+                             VerticalAlignment="Center"
+                             Fill="{Binding IsConnected, Converter={StaticResource BooleanToColorConverter}}"/>
+                    <TextBlock Text="{Binding IsConnected, Converter={StaticResource BooleanToTextConverter}}" 
+                               Foreground="White"
+                               VerticalAlignment="Center"
+                               Margin="0,0,16,0"/>
+                    <Button Content="{Binding UpdateButtonText}" 
+                            Command="{Binding CheckForUpdatesCommand}"
+                            Margin="0,0,8,0"/>
+                    <Button Content="Beállítások" 
+                            Command="{Binding OpenSettingsCommand}"
+                            Margin="0,0,8,0"/>
+                    <Button Content="ÁSZF" 
+                            Click="ViewTermsButton_Click"
+                            Margin="0,0,8,0"/>
+                    <Button Content="Kapcsolódás" 
+                            Command="{Binding ConnectCommand}"
+                            Margin="0,0,8,0"
+                            Visibility="{Binding IsConnected, Converter={StaticResource InverseBooleanToVisibilityConverter}}"/>
+                    <Button Content="Kapcsolat Bontása" 
+                            Command="{Binding DisconnectCommand}"
+                            Visibility="{Binding IsConnected, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Main Content -->
+        <TabControl Grid.Row="1">
+            <TabItem Header="Irányítópult">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0" 
+                                Orientation="Horizontal" 
+                                HorizontalAlignment="Right"
+                                Margin="8">
+                        <Button Content="Szerver Hozzáadása" 
+                                Command="{Binding AddServerCommand}"
+                                Margin="0,0,8,0"
+                                Padding="12,6"/>
+                        <Button x:Name="ClusterManagementButton"
+                                Content="Cluster Kezelése" 
+                                Command="{Binding OpenClusterManagementCommand}"
+                                Padding="12,6"/>
+                    </StackPanel>
+                    
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Servers}" Margin="16">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <views:ServerCard Margin="8"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Klaszter Vezérlés">
+                <StackPanel Margin="16" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <Button Content="Összes Indítása" 
+                            Command="{Binding StartAllCommand}"
+                            Width="200"
+                            Height="50"
+                            Margin="0,0,0,16"
+                            FontSize="16"/>
+                    <Button Content="Összes Leállítása" 
+                            Command="{Binding StopAllCommand}"
+                            Width="200"
+                            Height="50"
+                            Margin="0,0,0,16"
+                            FontSize="16"/>
+                    <Button Content="Összes Frissítése" 
+                            Command="{Binding UpdateAllCommand}"
+                            Width="200"
+                            Height="50"
+                            FontSize="16"/>
+                </StackPanel>
+            </TabItem>
+
+            <TabItem Header="Statisztikák">
+                <Grid>
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" 
+                                  IsDeferredScrollingEnabled="True"
+                                  CanContentScroll="True"
+                                  PanningMode="VerticalOnly">
+                    <Grid Margin="16">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="300"/>
+                            <RowDefinition Height="300"/>
+                            <RowDefinition Height="300"/>
+                            <RowDefinition Height="300"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" 
+                                   Text="Valós idejű rendszer statisztikák" 
+                                   FontSize="18" 
+                                   FontWeight="Bold" 
+                                   Margin="0,0,0,8"/>
+                        
+                        <!-- Time Range Selector -->
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,16">
+                            <TextBlock Text="Időtartam: " VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <ComboBox SelectedItem="{Binding ChartViewModel.CurrentTimeRange}" 
+                                      ItemsSource="{Binding ChartViewModel.TimeRangeOptions}"
+                                      Width="150"
+                                      Margin="0,0,16,0">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={StaticResource TimeRangeConverter}}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <!-- CPU Chart -->
+                        <Border Grid.Row="2" 
+                                BorderBrush="Gray" 
+                                BorderThickness="1" 
+                                Margin="0,0,0,16" 
+                                Padding="16">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" 
+                                           Text="Processzor Használat (%)" 
+                                           FontSize="14" 
+                                           FontWeight="Bold" 
+                                           Margin="0,0,0,8"/>
+                                <lvc:CartesianChart Grid.Row="1" 
+                                                    Series="{Binding ChartViewModel.CpuSeries, TargetNullValue={x:Null}}"
+                                                    Hoverable="False" 
+                                                    DataTooltip="{x:Null}"
+                                                    AnimationsSpeed="0:0:0.1"
+                                                    DisableAnimations="True">
+                                    <lvc:CartesianChart.AxisX>
+                                        <lvc:Axis Labels="{Binding ChartViewModel.Labels, TargetNullValue={x:Null}}"
+                                                  LabelsRotation="45"/>
+                                    </lvc:CartesianChart.AxisX>
+                                    <lvc:CartesianChart.AxisY>
+                                        <lvc:Axis Title="%" MinValue="0" MaxValue="100"/>
+                                    </lvc:CartesianChart.AxisY>
+                                </lvc:CartesianChart>
+                            </Grid>
+                        </Border>
+
+                        <!-- Memory Chart -->
+                        <Border Grid.Row="3" 
+                                BorderBrush="Gray" 
+                                BorderThickness="1" 
+                                Margin="0,0,0,16" 
+                                Padding="16">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" 
+                                           Text="Memória Használat (%)" 
+                                           FontSize="14" 
+                                           FontWeight="Bold" 
+                                           Margin="0,0,0,8"/>
+                                <lvc:CartesianChart Grid.Row="1" 
+                                                    Series="{Binding ChartViewModel.MemorySeries, TargetNullValue={x:Null}}"
+                                                    Hoverable="False" 
+                                                    DataTooltip="{x:Null}"
+                                                    AnimationsSpeed="0:0:0.1"
+                                                    DisableAnimations="True">
+                                    <lvc:CartesianChart.AxisX>
+                                        <lvc:Axis Labels="{Binding ChartViewModel.Labels, TargetNullValue={x:Null}}"
+                                                  LabelsRotation="45"/>
+                                    </lvc:CartesianChart.AxisX>
+                                    <lvc:CartesianChart.AxisY>
+                                        <lvc:Axis Title="%" MinValue="0" MaxValue="100"/>
+                                    </lvc:CartesianChart.AxisY>
+                                </lvc:CartesianChart>
+                            </Grid>
+                        </Border>
+
+                        <!-- Disk Chart -->
+                        <Border Grid.Row="4" 
+                                BorderBrush="Gray" 
+                                BorderThickness="1" 
+                                Margin="0,0,0,16" 
+                                Padding="16">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" 
+                                           Text="Tárhely Használat (%)" 
+                                           FontSize="14" 
+                                           FontWeight="Bold" 
+                                           Margin="0,0,0,8"/>
+                                <lvc:CartesianChart Grid.Row="1" 
+                                                    Series="{Binding ChartViewModel.DiskSeries, TargetNullValue={x:Null}}"
+                                                    Hoverable="False" 
+                                                    DataTooltip="{x:Null}"
+                                                    AnimationsSpeed="0:0:0.1"
+                                                    DisableAnimations="True">
+                                    <lvc:CartesianChart.AxisX>
+                                        <lvc:Axis Labels="{Binding ChartViewModel.Labels, TargetNullValue={x:Null}}"
+                                                  LabelsRotation="45"/>
+                                    </lvc:CartesianChart.AxisX>
+                                    <lvc:CartesianChart.AxisY>
+                                        <lvc:Axis Title="%" MinValue="0" MaxValue="100"/>
+                                    </lvc:CartesianChart.AxisY>
+                                </lvc:CartesianChart>
+                            </Grid>
+                        </Border>
+
+                        <!-- Network Chart -->
+                        <Border Grid.Row="5" 
+                                BorderBrush="Gray" 
+                                BorderThickness="1" 
+                                Margin="0,0,0,16" 
+                                Padding="16">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" 
+                                           Text="Hálózati Használat (Mbps)" 
+                                           FontSize="14" 
+                                           FontWeight="Bold" 
+                                           Margin="0,0,0,8"/>
+                                <lvc:CartesianChart Grid.Row="1" 
+                                                    Series="{Binding ChartViewModel.NetworkSeries, TargetNullValue={x:Null}}"
+                                                    Hoverable="False" 
+                                                    DataTooltip="{x:Null}"
+                                                    AnimationsSpeed="0:0:0.1"
+                                                    DisableAnimations="True">
+                                    <lvc:CartesianChart.AxisX>
+                                        <lvc:Axis Labels="{Binding ChartViewModel.Labels, TargetNullValue={x:Null}}"
+                                                  LabelsRotation="45"/>
+                                    </lvc:CartesianChart.AxisX>
+                                    <lvc:CartesianChart.AxisY>
+                                        <lvc:Axis Title="Mbps" MinValue="0"/>
+                                    </lvc:CartesianChart.AxisY>
+                                </lvc:CartesianChart>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                    </ScrollViewer>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <!-- Global Log -->
+        <Expander Grid.Row="2" Header="Globális Napló" IsExpanded="{Binding IsLogExpanded}">
+            <ScrollViewer MaxHeight="200" VerticalScrollBarVisibility="Auto">
+                <TextBox Text="{Binding GlobalLog}" 
+                         IsReadOnly="True"
+                         TextWrapping="Wrap"
+                         FontFamily="Consolas"
+                         FontSize="12"
+                         Background="#1E1E1E"
+                         Foreground="#D4D4D4"
+                         BorderThickness="0"/>
+            </ScrollViewer>
+        </Expander>
+    </Grid>
+</Window>

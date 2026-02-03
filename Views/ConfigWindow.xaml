@@ -1,0 +1,156 @@
+<Window x:Class="ZedASAManager.Views.ConfigWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Szerver Konfiguráció" Height="700" Width="1000"
+        WindowStartupLocation="CenterScreen">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <TextBlock Grid.Row="0" 
+                   Text="{Binding ServerName, StringFormat='Konfiguráció: {0}'}" 
+                   FontSize="20" 
+                   FontWeight="Bold" 
+                   Margin="0,0,0,16"/>
+
+        <!-- Config File Selector -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,16">
+            <TextBlock Text="Konfiguráció fájl:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <ComboBox SelectedItem="{Binding SelectedConfigFile}" 
+                      ItemsSource="{Binding ConfigFiles}"
+                      Width="200"
+                      Margin="0,0,16,0"/>
+            <Button Content="Betöltés" 
+                    Command="{Binding LoadCommand}"
+                    Margin="8,0"
+                    Padding="12,6"/>
+        </StackPanel>
+
+        <!-- Config Content -->
+        <ScrollViewer Grid.Row="2" 
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Auto"
+                      Margin="0,0,0,16">
+            <ItemsControl ItemsSource="{Binding CurrentIniFile.Sections}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Margin="0,0,0,16">
+                            <!-- Section Header -->
+                            <TextBlock Text="{Binding Name, StringFormat='[{0}]'}" 
+                                       FontSize="16" 
+                                       FontWeight="Bold" 
+                                       Foreground="#6200EA"
+                                       Margin="0,0,0,8"
+                                       Visibility="{Binding Name, Converter={StaticResource StringToVisibilityConverter}}"/>
+                            
+                            <!-- Section Lines -->
+                            <ItemsControl ItemsSource="{Binding Lines}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Boolean Toggle -->
+                                            <Grid Grid.Column="0" 
+                                                  Visibility="{Binding Type, Converter={StaticResource BooleanLineToVisibilityConverter}}">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+                                                <StackPanel Grid.Row="0" 
+                                                           Orientation="Horizontal"
+                                                           VerticalAlignment="Center"
+                                                           Margin="0,0,0,4">
+                                                    <TextBlock VerticalAlignment="Center" Margin="0,0,8,0">
+                                                        <Run Text="{Binding Key}"/>
+                                                        <Run Text="="/>
+                                                    </TextBlock>
+                                                    <CheckBox IsChecked="{Binding Value, Converter={StaticResource StringToBooleanConverter}, Mode=TwoWay}"
+                                                             VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                                <TextBlock Grid.Row="1"
+                                                           Text="{Binding Description}"
+                                                           FontSize="11"
+                                                           FontStyle="Italic"
+                                                           Foreground="#666"
+                                                           TextWrapping="Wrap"
+                                                           Margin="0,0,0,4"/>
+                                            </Grid>
+                                            
+                                            <!-- Key-Value Pair -->
+                                            <Grid Grid.Column="0" 
+                                                  Visibility="{Binding Type, Converter={StaticResource ValueLineToVisibilityConverter}}">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="300"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Row="0" Grid.Column="0" 
+                                                           VerticalAlignment="Center"
+                                                           Margin="0,0,8,0">
+                                                    <Run Text="{Binding Key}"/>
+                                                    <Run Text="="/>
+                                                </TextBlock>
+                                                <TextBox Grid.Row="0" Grid.Column="1" 
+                                                         Text="{Binding Value, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
+                                                         VerticalAlignment="Center"
+                                                         Margin="0,0,0,4"/>
+                                                <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                                                           Text="{Binding Description}"
+                                                           FontSize="11"
+                                                           FontStyle="Italic"
+                                                           Foreground="#666"
+                                                           TextWrapping="Wrap"
+                                                           Margin="0,0,0,4"/>
+                                            </Grid>
+
+                                            <!-- Comment or Empty Line -->
+                                            <TextBlock Grid.Column="0"
+                                                       Text="{Binding Content}"
+                                                       FontStyle="Italic"
+                                                       Foreground="Gray"
+                                                       Visibility="{Binding Type, Converter={StaticResource CommentLineToVisibilityConverter}}"
+                                                       TextWrapping="Wrap"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <!-- Action Buttons -->
+        <StackPanel Grid.Row="3" 
+                    Orientation="Horizontal" 
+                    HorizontalAlignment="Right">
+            <Button Content="Letöltés" 
+                    Command="{Binding DownloadCommand}"
+                    Margin="8,0"
+                    Padding="12,6"/>
+            <Button Content="Feltöltés" 
+                    Command="{Binding UploadCommand}"
+                    Margin="8,0"
+                    Padding="12,6"/>
+            <Button Content="Mentés" 
+                    Command="{Binding SaveCommand}"
+                    Margin="8,0"
+                    Padding="12,6"/>
+            <Button Content="Bezárás" 
+                    Click="CloseButton_Click"
+                    Margin="8,0"
+                    Padding="12,6"/>
+        </StackPanel>
+    </Grid>
+</Window>
