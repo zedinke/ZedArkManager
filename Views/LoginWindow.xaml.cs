@@ -14,12 +14,25 @@ public partial class LoginWindow : Window
     {
         try
         {
+            // Check if application is shutting down before initializing
+            if (Application.Current == null || Application.Current.ShutdownMode == ShutdownMode.OnExplicitShutdown)
+            {
+                System.Diagnostics.Debug.WriteLine("LoginWindow: Application is shutting down, cannot initialize");
+                return;
+            }
+            
             InitializeComponent();
             _viewModel = new LoginViewModel();
             DataContext = _viewModel;
 
             _viewModel.LoginSuccessful += OnLoginSuccessful;
             _viewModel.RegisterSuccessful += OnRegisterSuccessful;
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("shut down") || ex.Message.Contains("Shutdown"))
+        {
+            // Application is shutting down, don't show error
+            System.Diagnostics.Debug.WriteLine($"LoginWindow: Application shutting down: {ex.Message}");
+            return;
         }
         catch (Exception ex)
         {
