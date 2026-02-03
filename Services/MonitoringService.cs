@@ -106,15 +106,50 @@ public class MonitoringService : IDisposable
     {
         try
         {
-            // Status is determined by PID: each server has its own container with PID
+            // Status is determined ONLY by PID: each server has its own container with PID
+            // We check if the container is actually RUNNING (not just exists)
             // Container name format: asa_{instanceName}
-            // We need to find the instance name for each server and check its container's PID
+            // We use 'docker ps' to get only RUNNING containers, then check their PIDs
             if (_serverStats.Count == 0)
                 return;
 
-            System.Diagnostics.Debug.WriteLine($"=== Server Status Check (PID-based) ===");
+            System.Diagnostics.Debug.WriteLine($"=== Server Status Check (PID-based, RUNNING containers only) ===");
 
-            // Update status for all known servers based on container PID
+            // First, get all RUNNING containers with their names and PIDs
+            // docker ps only shows running containers
+            string runningContainersCommand = "docker ps --format '{{.Names}}|{{.ID}}' 2>/dev/null";
+            string runningContainersOutput = await _sshService.ExecuteCommandAsync(runningContainersCommand);
+            
+            var runningContainerPids = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var lines = runningContainersOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            
+            foreach (var line in lines)
+            {
+                var parts = line.Split('|');
+                if (parts.Length >= 2)
+                {
+                    string containerName = parts[0].Trim();
+                    string containerId = parts[1].Trim();
+                    
+                    // Only process asa_ containers
+                    if (containerName.StartsWith("asa_"))
+                    {
+                        // Get PID for this running container
+                        string pidCommand = $"docker inspect --format '{{{{.State.Pid}}}}' {containerId} 2>/dev/null";
+                        string pidOutput = await _sshService.ExecuteCommandAsync(pidCommand);
+                        
+                        if (!string.IsNullOrWhiteSpace(pidOutput) && int.TryParse(pidOutput.Trim(), out int pid) && pid > 0)
+                        {
+                            runningContainerPids[containerName] = pid;
+                            System.Diagnostics.Debug.WriteLine($"Found RUNNING container: '{containerName}' with PID={pid}");
+                        }
+                    }
+                }
+            }
+            
+            System.Diagnostics.Debug.WriteLine($"Total RUNNING asa_ containers: {runningContainerPids.Count}");
+
+            // Update status for all known servers based on RUNNING container PID
             foreach (var serverName in _serverStats.Keys.ToList())
             {
                 var stats = _serverStats[serverName];
@@ -126,17 +161,14 @@ public class MonitoringService : IDisposable
                 {
                     // If no directory path, try to use server name directly as instance name
                     string containerName = $"asa_{serverName}";
-                    string pidCommand = $"docker inspect --format '{{{{.State.Pid}}}}' {containerName} 2>/dev/null";
-                    string pidOutput = await _sshService.ExecuteCommandAsync(pidCommand);
-                    
-                    if (!string.IsNullOrWhiteSpace(pidOutput) && int.TryParse(pidOutput.Trim(), out pid) && pid > 0)
+                    if (runningContainerPids.TryGetValue(containerName, out pid))
                     {
                         isOnline = true;
                         System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is ONLINE (container '{containerName}', PID={pid})");
                     }
                     else
                     {
-                        System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is OFFLINE (container '{containerName}' not found or no PID)");
+                        System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is OFFLINE (container '{containerName}' not in running containers list)");
                     }
                 }
                 else
@@ -148,38 +180,33 @@ public class MonitoringService : IDisposable
                     {
                         // Container name is: asa_{instanceName}
                         string containerName = $"asa_{instanceName}";
-                        string pidCommand = $"docker inspect --format '{{{{.State.Pid}}}}' {containerName} 2>/dev/null";
-                        string pidOutput = await _sshService.ExecuteCommandAsync(pidCommand);
-                        
-                        if (!string.IsNullOrWhiteSpace(pidOutput) && int.TryParse(pidOutput.Trim(), out pid) && pid > 0)
+                        if (runningContainerPids.TryGetValue(containerName, out pid))
                         {
                             isOnline = true;
                             System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is ONLINE (instance='{instanceName}', container='{containerName}', PID={pid})");
                         }
                         else
                         {
-                            System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is OFFLINE (instance='{instanceName}', container='{containerName}' not found or no PID)");
+                            System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is OFFLINE (instance='{instanceName}', container='{containerName}' not in running containers list)");
                         }
                     }
                     else
                     {
                         // Fallback: try server name as instance name
                         string containerName = $"asa_{serverName}";
-                        string pidCommand = $"docker inspect --format '{{{{.State.Pid}}}}' {containerName} 2>/dev/null";
-                        string pidOutput = await _sshService.ExecuteCommandAsync(pidCommand);
-                        
-                        if (!string.IsNullOrWhiteSpace(pidOutput) && int.TryParse(pidOutput.Trim(), out pid) && pid > 0)
+                        if (runningContainerPids.TryGetValue(containerName, out pid))
                         {
                             isOnline = true;
                             System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is ONLINE (fallback container '{containerName}', PID={pid})");
                         }
                         else
                         {
-                            System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is OFFLINE (could not find instance name or container)");
+                            System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is OFFLINE (container '{containerName}' not in running containers list)");
                         }
                     }
                 }
                 
+                // IMPORTANT: Only set status based on PID check, NOT on memory/CPU stats
                 stats.Status = isOnline ? ServerStatus.Online : ServerStatus.Offline;
                 
                 // Always notify to ensure UI is updated
