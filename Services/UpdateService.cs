@@ -123,18 +123,22 @@ public class UpdateService
             System.Diagnostics.Debug.WriteLine($"Checking for updates from: {url}");
             
             var response = await _httpClient.GetStringAsync(url);
-            System.Diagnostics.Debug.WriteLine($"GitHub API response received: {response.Substring(0, Math.Min(200, response.Length))}...");
+            System.Diagnostics.Debug.WriteLine($"GitHub API response received: {response.Substring(0, Math.Min(500, response.Length))}...");
             
             var json = JObject.Parse(response);
 
             var tagName = json["tag_name"]?.ToString();
+            System.Diagnostics.Debug.WriteLine($"GitHub API tag_name: {tagName}");
+            
             if (string.IsNullOrEmpty(tagName))
             {
+                System.Diagnostics.Debug.WriteLine("GitHub API: tag_name is null or empty");
                 return null;
             }
 
             // Remove 'v' prefix if present (e.g., "v1.0.0" -> "1.0.0")
             var version = tagName.StartsWith("v") ? tagName.Substring(1) : tagName;
+            System.Diagnostics.Debug.WriteLine($"GitHub API: Parsed version: {version}");
 
             var body = json["body"]?.ToString() ?? string.Empty;
             var assets = json["assets"] as JArray;
