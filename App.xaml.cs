@@ -136,12 +136,36 @@ public partial class App : Application
         finally
         {
             // Show login window after update check (or if it failed)
+            // Use Dispatcher to ensure we're on the UI thread
             try
             {
                 File.AppendAllText("C:\\temp\\zedasa_startup.log", $"CheckForUpdatesAndShowLoginAsync: Showing login window\n");
             }
             catch { }
-            ShowLoginWindow();
+            
+            // Ensure we're on the UI thread and app is still running before showing the login window
+            if (Application.Current != null && Application.Current.Dispatcher != null)
+            {
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    if (Application.Current != null && Application.Current.ShutdownMode != ShutdownMode.OnExplicitShutdown)
+                    {
+                        ShowLoginWindow();
+                    }
+                    else
+                    {
+                        try
+                        {
+                            File.AppendAllText("C:\\temp\\zedasa_startup.log", $"CheckForUpdatesAndShowLoginAsync: Application is shutting down, cannot show login window\n");
+                        }
+                        catch { }
+                    }
+                });
+            }
+            else
+            {
+                ShowLoginWindow();
+            }
         }
     }
 
