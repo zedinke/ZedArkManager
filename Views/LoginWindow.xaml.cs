@@ -28,14 +28,25 @@ public partial class LoginWindow : Window
             _viewModel.LoginSuccessful += OnLoginSuccessful;
             _viewModel.RegisterSuccessful += OnRegisterSuccessful;
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("shut down") || ex.Message.Contains("Shutdown"))
+        catch (InvalidOperationException ex) when (ex.Message.Contains("shut down") || ex.Message.Contains("Shutdown") || ex.Message.Contains("being shut"))
         {
             // Application is shutting down, don't show error
             System.Diagnostics.Debug.WriteLine($"LoginWindow: Application shutting down: {ex.Message}");
+            try
+            {
+                System.IO.File.AppendAllText("C:\\temp\\zedasa_startup.log", $"LoginWindow: Application shutting down exception caught: {ex.Message}\n");
+            }
+            catch { }
             return;
         }
         catch (Exception ex)
         {
+            try
+            {
+                System.IO.File.AppendAllText("C:\\temp\\zedasa_startup.log", $"LoginWindow: Exception in constructor: {ex.Message}\n{ex.StackTrace}\n");
+            }
+            catch { }
+            
             MessageBox.Show(
                 $"LoginWindow inicializálási hiba:\n\n{ex.Message}\n\n{ex.StackTrace}",
                 "Hiba",
