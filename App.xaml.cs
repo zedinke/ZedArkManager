@@ -54,25 +54,9 @@ public partial class App : Application
             
             File.AppendAllText("C:\\temp\\zedasa_startup.log", $"MainWindow created (hidden) to prevent app shutdown\n");
 
-            // Check for updates before showing login window (fire and forget, but wait if required)
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await CheckForUpdatesAsync();
-                }
-                catch (Exception ex)
-                {
-                    try
-                    {
-                        File.AppendAllText("C:\\temp\\zedasa_startup.log", $"Update check error: {ex.Message}\n");
-                    }
-                    catch { }
-                }
-            });
-
-            // Show login window
-            ShowLoginWindow();
+            // Check for updates before showing login window
+            // Use async void to handle the update check
+            CheckForUpdatesAndShowLogin();
         }
         catch (Exception ex)
         {
@@ -91,36 +75,44 @@ public partial class App : Application
         }
     }
 
-    private async Task CheckForUpdatesAsync()
+    private async void CheckForUpdatesAndShowLogin()
     {
         try
         {
             var updateService = new UpdateService();
             var (hasUpdate, isRequired, latestVersion, releaseNotes) = await updateService.CheckForUpdatesAsync();
+            
+            try
+            {
+                var currentVersion = updateService.GetCurrentVersion();
+                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"Update check result: currentVersion={currentVersion}, hasUpdate={hasUpdate}, isRequired={isRequired}, latestVersion={latestVersion}\n");
+            }
+            catch { }
 
             if (hasUpdate && isRequired)
             {
-                // Use dispatcher to show window on UI thread
-                await Application.Current.Dispatcher.InvokeAsync(async () =>
-                {
-                    var currentVersion = updateService.GetCurrentVersion();
-                    var updateWindow = new UpdateWindow(updateService, true, currentVersion, latestVersion ?? "unknown", releaseNotes);
-                    updateWindow.ShowDialog();
-                    
-                    // If update was successful, the app will restart, so we don't need to continue
-                    // If update was cancelled or failed, we should still allow the app to start
-                    // but the window should prevent closing if required
-                });
+                // Show update window and wait for it
+                var currentVersion = updateService.GetCurrentVersion();
+                var updateWindow = new UpdateWindow(updateService, true, currentVersion, latestVersion ?? "unknown", releaseNotes);
+                updateWindow.ShowDialog();
+                
+                // If update was successful, the app will restart, so we don't need to continue
+                // If update was cancelled or failed, we should still allow the app to start
             }
         }
-        catch (Exception ex)
+        catch (Exception updateEx)
         {
             try
             {
-                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"Update check error: {ex.Message}\n");
+                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"Update check error: {updateEx.Message}\n{updateEx.StackTrace}\n");
             }
             catch { }
             // Don't block startup if update check fails
+        }
+        finally
+        {
+            // Show login window after update check (or if it failed)
+            ShowLoginWindow();
         }
     }
 
