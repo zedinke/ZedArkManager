@@ -14,11 +14,10 @@ namespace ZedASAManager.Services;
 public class UpdateService
 {
     private readonly HttpClient _httpClient;
-    // TODO: Configure these values with your actual GitHub repository information
     // GitHub repository owner (username or organization name)
-    private const string GitHubOwner = "YOUR_GITHUB_USERNAME";
+    private const string GitHubOwner = "zedinke";
     // GitHub repository name
-    private const string GitHubRepo = "ZedASAManager";
+    private const string GitHubRepo = "ZedArkManager";
     // Pattern for release asset filename (e.g., "ZedASAManager-1.0.0.zip")
     // The {version} placeholder will be replaced with the actual version number
     private const string AssetFileNamePattern = "ZedASAManager-{version}.zip";
