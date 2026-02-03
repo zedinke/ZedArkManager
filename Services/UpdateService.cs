@@ -188,9 +188,24 @@ public class UpdateService
             
             return releaseInfo;
         }
+        catch (HttpRequestException httpEx)
+        {
+            System.Diagnostics.Debug.WriteLine($"HTTP Request Error fetching latest version: {httpEx.Message}\nStatus: {httpEx.Data}\n{httpEx.StackTrace}");
+            try
+            {
+                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"GitHub API HTTP Error: {httpEx.Message}\n");
+            }
+            catch { }
+            return null;
+        }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error fetching latest version: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"Error fetching latest version: {ex.Message}\n{ex.StackTrace}");
+            try
+            {
+                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"GitHub API Error: {ex.Message}\n{ex.StackTrace}\n");
+            }
+            catch { }
             return null;
         }
     }
