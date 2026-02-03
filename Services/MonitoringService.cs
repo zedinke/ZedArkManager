@@ -117,9 +117,9 @@ public class MonitoringService : IDisposable
 
             System.Diagnostics.Debug.WriteLine($"=== Server Status Check (PID-based, RUNNING containers only) ===");
 
-            // First, get all RUNNING containers with their names and PIDs
+            // First, get all RUNNING containers with their names
             // docker ps only shows running containers
-            string runningContainersCommand = "docker ps --format '{{.Names}}|{{.ID}}' 2>/dev/null";
+            string runningContainersCommand = "docker ps --format '{{.Names}}' 2>/dev/null";
             string runningContainersOutput = await _sshService.ExecuteCommandAsync(runningContainersCommand);
             
             var runningContainerPids = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -127,23 +127,33 @@ public class MonitoringService : IDisposable
             
             foreach (var line in lines)
             {
-                var parts = line.Split('|');
-                if (parts.Length >= 2)
+                string containerName = line.Trim();
+                
+                // Only process asa_ containers
+                if (containerName.StartsWith("asa_"))
                 {
-                    string containerName = parts[0].Trim();
-                    string containerId = parts[1].Trim();
+                    // Get the actual ArkAscendedServer.exe process PID from the container
+                    // docker top shows processes in the container with their HOST PIDs
+                    // We need to find the ArkAscendedServer.exe process
+                    string topCommand = $"docker top {containerName} 2>/dev/null | grep -i 'ArkAscendedServer.exe' | head -1 | awk '{{print $2}}'";
+                    string pidOutput = await _sshService.ExecuteCommandAsync(topCommand);
                     
-                    // Only process asa_ containers
-                    if (containerName.StartsWith("asa_"))
+                    if (!string.IsNullOrWhiteSpace(pidOutput) && int.TryParse(pidOutput.Trim(), out int pid) && pid > 0)
                     {
-                        // Get PID for this running container
-                        string pidCommand = $"docker inspect --format '{{{{.State.Pid}}}}' {containerId} 2>/dev/null";
-                        string pidOutput = await _sshService.ExecuteCommandAsync(pidCommand);
+                        runningContainerPids[containerName] = pid;
+                        System.Diagnostics.Debug.WriteLine($"Found RUNNING container: '{containerName}' with ArkAscendedServer.exe PID={pid}");
+                    }
+                    else
+                    {
+                        // Fallback: if ArkAscendedServer.exe not found, try to get the main process PID
+                        // This might happen if the process name is slightly different
+                        string fallbackCommand = $"docker top {containerName} 2>/dev/null | grep -v 'PID' | head -1 | awk '{{print $2}}'";
+                        string fallbackPidOutput = await _sshService.ExecuteCommandAsync(fallbackCommand);
                         
-                        if (!string.IsNullOrWhiteSpace(pidOutput) && int.TryParse(pidOutput.Trim(), out int pid) && pid > 0)
+                        if (!string.IsNullOrWhiteSpace(fallbackPidOutput) && int.TryParse(fallbackPidOutput.Trim(), out int fallbackPid) && fallbackPid > 0)
                         {
-                            runningContainerPids[containerName] = pid;
-                            System.Diagnostics.Debug.WriteLine($"Found RUNNING container: '{containerName}' with PID={pid}");
+                            runningContainerPids[containerName] = fallbackPid;
+                            System.Diagnostics.Debug.WriteLine($"Found RUNNING container: '{containerName}' with fallback PID={fallbackPid}");
                         }
                     }
                 }
