@@ -40,11 +40,16 @@ public partial class UpdateWindow : Window
 
         if (!string.IsNullOrEmpty(_releaseNotes))
         {
+            ReleaseNotesLabel.Text = LocalizationHelper.GetString("release_notes");
+            ReleaseNotesLabel.Visibility = Visibility.Visible;
             ReleaseNotesTextBlock.Text = _releaseNotes;
+            ReleaseNotesTextBlock.Visibility = Visibility.Visible;
         }
         else
         {
-            ReleaseNotesTextBlock.Visibility = Visibility.Collapsed;
+            ReleaseNotesLabel.Visibility = Visibility.Collapsed;
+            ReleaseNotesTextBlock.Text = LocalizationHelper.GetString("no_release_notes");
+            ReleaseNotesTextBlock.Visibility = Visibility.Visible;
         }
 
         UpdateButton.Content = LocalizationHelper.GetString("update");

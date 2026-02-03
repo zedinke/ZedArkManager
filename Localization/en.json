@@ -135,5 +135,7 @@
   "update_success": "Update successful, restarting...",
   "update_error": "Update error",
   "no_updates": "No updates available",
-  "update_failed": "Update failed"
+  "update_failed": "Update failed",
+  "release_notes": "Release Notes:",
+  "no_release_notes": "No release notes available"
 }

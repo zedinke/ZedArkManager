@@ -135,5 +135,7 @@
   "update_success": "Frissítés sikeres, újraindítás...",
   "update_error": "Frissítési hiba",
   "no_updates": "Nincs elérhető frissítés",
-  "update_failed": "A frissítés sikertelen volt"
+  "update_failed": "A frissítés sikertelen volt",
+  "release_notes": "Frissítési jegyzetek:",
+  "no_release_notes": "Nincs elérhető frissítési jegyzet"
 }

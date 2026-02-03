@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Height="400" Width="500"
+        Height="500" Width="600"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         Title="Frissítés">
@@ -21,9 +21,15 @@
                        TextWrapping="Wrap"/>
             <TextBlock x:Name="LatestVersionTextBlock"
                        FontSize="12"
-                       Margin="0,0,0,16"
+                       Margin="0,0,0,8"
                        TextWrapping="Wrap"/>
-            <ScrollViewer MaxHeight="150" Margin="0,0,0,16" VerticalScrollBarVisibility="Auto">
+            <TextBlock x:Name="ReleaseNotesLabel"
+                       Text="Frissítési jegyzetek:"
+                       FontSize="12"
+                       FontWeight="Bold"
+                       Margin="0,0,0,8"
+                       Visibility="Collapsed"/>
+            <ScrollViewer MaxHeight="200" Margin="0,0,0,16" VerticalScrollBarVisibility="Auto">
                 <TextBlock x:Name="ReleaseNotesTextBlock"
                            FontSize="11"
                            TextWrapping="Wrap"
