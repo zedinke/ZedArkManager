@@ -92,11 +92,21 @@ public class UpdateService
             if (latestVersionInfo == null)
             {
                 System.Diagnostics.Debug.WriteLine("No release info found from GitHub");
+                try
+                {
+                    File.AppendAllText("C:\\temp\\zedasa_startup.log", $"CheckForUpdatesAsync: latestVersionInfo is null - GitHub API call failed or returned no data\n");
+                }
+                catch { }
                 return (false, false, null, null);
             }
 
             var latestVersion = latestVersionInfo.Version;
             System.Diagnostics.Debug.WriteLine($"Latest version from GitHub: {latestVersion}");
+            try
+            {
+                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"CheckForUpdatesAsync: latestVersion={latestVersion}, downloadUrl={latestVersionInfo.DownloadUrl}\n");
+            }
+            catch { }
             
             var comparison = CompareVersions(latestVersion, currentVersion);
             System.Diagnostics.Debug.WriteLine($"Version comparison result: {comparison} (1 = latest is newer, 0 = same, -1 = latest is older)");
