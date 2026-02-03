@@ -55,8 +55,15 @@ public partial class App : Application
             File.AppendAllText("C:\\temp\\zedasa_startup.log", $"MainWindow created (hidden) to prevent app shutdown\n");
 
             // Check for updates before showing login window
-            // Use async void to handle the update check
-            CheckForUpdatesAndShowLogin();
+            // Use Dispatcher.InvokeAsync to ensure we're on the UI thread and wait for completion
+            var updateTask = Dispatcher.InvokeAsync(async () =>
+            {
+                await CheckForUpdatesAndShowLoginAsync();
+            });
+            
+            // Wait for the update check to complete before continuing
+            // This prevents the app from shutting down before LoginWindow is shown
+            updateTask.Wait();
         }
         catch (Exception ex)
         {
@@ -75,13 +82,13 @@ public partial class App : Application
         }
     }
 
-    private async void CheckForUpdatesAndShowLogin()
+    private async Task CheckForUpdatesAndShowLoginAsync()
     {
         try
         {
             try
             {
-                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"CheckForUpdatesAndShowLogin: Starting update check\n");
+                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"CheckForUpdatesAndShowLoginAsync: Starting update check\n");
             }
             catch { }
             
@@ -134,7 +141,7 @@ public partial class App : Application
             // Show login window after update check (or if it failed)
             try
             {
-                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"CheckForUpdatesAndShowLogin: Showing login window\n");
+                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"CheckForUpdatesAndShowLoginAsync: Showing login window\n");
             }
             catch { }
             ShowLoginWindow();
