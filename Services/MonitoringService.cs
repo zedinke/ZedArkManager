@@ -388,78 +388,70 @@ public class MonitoringService : IDisposable
             System.Diagnostics.Debug.WriteLine($"Total asa_ containers found: {containerStats.Count}");
             
             // Now update all tracked servers, matching containers to servers
+            // IMPORTANT: Only update stats for servers that are actually ONLINE (based on status)
+            // Use the same instance name logic as UpdateServerStatusesAsync
             foreach (var serverName in _serverStats.Keys.ToList())
             {
                 var stats = _serverStats[serverName];
-                bool foundMatch = false;
                 
-                // Normalize server name for comparison
-                string normalizedServerName = serverName.ToLowerInvariant().Trim();
-                
-                // Try to find matching container
-                foreach (var containerName in containerStats.Keys)
+                // Only update stats if server is ONLINE
+                // If server is offline, reset stats to 0/empty
+                if (stats.Status != ServerStatus.Online)
                 {
-                    if (!containerName.StartsWith("asa_"))
-                        continue;
+                    stats.CpuUsage = 0;
+                    stats.MemoryUsage = string.Empty;
+                    System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is OFFLINE, resetting stats to 0/empty");
+                    OnServerStatsUpdated(serverName, stats);
+                    continue;
+                }
+                
+                // Server is online, find the correct container using instance name logic
+                bool foundMatch = false;
+                string? containerNameToMatch = null;
+                
+                // Get directory path for this server to find instance name (same logic as UpdateServerStatusesAsync)
+                if (!_serverDirectoryPaths.TryGetValue(serverName, out string? directoryPath) || string.IsNullOrEmpty(directoryPath))
+                {
+                    // If no directory path, try to use server name directly as instance name
+                    containerNameToMatch = $"asa_{serverName}";
+                }
+                else
+                {
+                    // Find instance name from Instance_* directory
+                    string instanceName = await GetInstanceNameForServerAsync(serverName, directoryPath);
                     
-                    // Extract server name from container (e.g., "asa_Rexodon-center" -> "Rexodon-center")
-                    string extractedServerName = containerName.Substring(4); // Remove "asa_" prefix
-                    string normalizedExtractedName = extractedServerName.ToLowerInvariant().Trim();
-                    
-                    // Try exact match first
-                    if (normalizedExtractedName == normalizedServerName)
+                    if (!string.IsNullOrEmpty(instanceName))
                     {
-                        var (memoryUsage, cpuUsage) = containerStats[containerName];
-                        stats.CpuUsage = cpuUsage;
-                        stats.MemoryUsage = memoryUsage;
-                        foundMatch = true;
-                        System.Diagnostics.Debug.WriteLine($"Matched server '{serverName}' to container '{containerName}': CPU={cpuUsage:F2}%, Memory={memoryUsage}");
-                        break;
+                        // Container name is: asa_{instanceName}
+                        containerNameToMatch = $"asa_{instanceName}";
                     }
-                    
-                    // Try partial matches
-                    if (normalizedExtractedName.Contains(normalizedServerName) || 
-                        normalizedServerName.Contains(normalizedExtractedName))
+                    else
                     {
-                        var (memoryUsage, cpuUsage) = containerStats[containerName];
-                        stats.CpuUsage = cpuUsage;
-                        stats.MemoryUsage = memoryUsage;
-                        foundMatch = true;
-                        System.Diagnostics.Debug.WriteLine($"Matched server '{serverName}' to container '{containerName}' (partial): CPU={cpuUsage:F2}%, Memory={memoryUsage}");
-                        break;
-                    }
-                    
-                    // Try matching by removing common suffixes
-                    string serverNameBase = normalizedServerName;
-                    string extractedBase = normalizedExtractedName;
-                    string[] suffixes = { "-center", "-server", "-asa", "-ark" };
-                    foreach (var suffix in suffixes)
-                    {
-                        if (serverNameBase.EndsWith(suffix))
-                            serverNameBase = serverNameBase.Substring(0, serverNameBase.Length - suffix.Length);
-                        if (extractedBase.EndsWith(suffix))
-                            extractedBase = extractedBase.Substring(0, extractedBase.Length - suffix.Length);
-                    }
-                    
-                    if (serverNameBase == extractedBase || 
-                        serverNameBase.Contains(extractedBase) || 
-                        extractedBase.Contains(serverNameBase))
-                    {
-                        var (memoryUsage, cpuUsage) = containerStats[containerName];
-                        stats.CpuUsage = cpuUsage;
-                        stats.MemoryUsage = memoryUsage;
-                        foundMatch = true;
-                        System.Diagnostics.Debug.WriteLine($"Matched server '{serverName}' to container '{containerName}' (suffix removed): CPU={cpuUsage:F2}%, Memory={memoryUsage}");
-                        break;
+                        // Fallback: try server name as instance name
+                        containerNameToMatch = $"asa_{serverName}";
                     }
                 }
                 
-                // If no match found, reset stats to 0/empty
+                // Now try to find matching container in the stats
+                if (!string.IsNullOrEmpty(containerNameToMatch))
+                {
+                    // Try exact match first
+                    if (containerStats.TryGetValue(containerNameToMatch, out var matchedStats))
+                    {
+                        var (memoryUsage, cpuUsage) = matchedStats;
+                        stats.CpuUsage = cpuUsage;
+                        stats.MemoryUsage = memoryUsage;
+                        foundMatch = true;
+                        System.Diagnostics.Debug.WriteLine($"Matched server '{serverName}' to container '{containerNameToMatch}': CPU={cpuUsage:F2}%, Memory={memoryUsage}");
+                    }
+                }
+                
+                // If no match found, reset stats to 0/empty (server might have just stopped)
                 if (!foundMatch)
                 {
                     stats.CpuUsage = 0;
                     stats.MemoryUsage = string.Empty;
-                    System.Diagnostics.Debug.WriteLine($"No container match for server '{serverName}', resetting stats. Available containers: {string.Join(", ", containerStats.Keys)}");
+                    System.Diagnostics.Debug.WriteLine($"No container match for server '{serverName}' (expected container: '{containerNameToMatch}'), resetting stats. Available containers: {string.Join(", ", containerStats.Keys)}");
                 }
                 
                 // Always notify to ensure UI is updated
