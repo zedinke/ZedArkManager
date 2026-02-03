@@ -60,7 +60,9 @@ public class ServerCardViewModel : ViewModelBase
     public string MemoryUsage => Model.MemoryUsage;
     public string PortInfo => Model.AsaPort > 0 ? $"{LocalizationHelper.GetString("port_info")}: {Model.AsaPort}" : "";
     public string PlayerInfo => $"{Model.OnlinePlayers}/{Model.MaxPlayers}";
-    public string PidInfo => Model.ContainerPid > 0 ? $"PID: {Model.ContainerPid}" : "PID: -";
+    public string GameDayInfo => Model.GameDay > 0 ? $"{LocalizationHelper.GetString("day")}: {Model.GameDay}" : "";
+    public string ServerVersionInfo => !string.IsNullOrEmpty(Model.ServerVersion) ? $"{LocalizationHelper.GetString("version")}: {Model.ServerVersion}" : "";
+    public string ServerPingInfo => !string.IsNullOrEmpty(Model.ServerPing) ? $"{LocalizationHelper.GetString("ping")}: {Model.ServerPing}" : "";
 
     public ICommand StartCommand { get; }
     public ICommand StopCommand { get; }
@@ -501,56 +503,41 @@ public class ServerCardViewModel : ViewModelBase
 
     private void OnServerStatsUpdated(object? sender, MonitoringService.ServerStatsEventArgs e)
     {
-        // Use case-insensitive comparison and partial matching (same logic as MonitoringService)
+        // Use EXACT case-insensitive matching to avoid mismatches
         string normalizedEventServerName = e.ServerName.ToLowerInvariant().Trim();
         string normalizedModelName = Model.Name.ToLowerInvariant().Trim();
         
         bool isMatch = normalizedEventServerName == normalizedModelName;
         
-        // Try partial matches if exact match fails
+        System.Diagnostics.Debug.WriteLine($"[ServerCardViewModel] Matching: EventServerName='{e.ServerName}' (normalized: '{normalizedEventServerName}') vs ModelName='{Model.Name}' (normalized: '{normalizedModelName}') -> Match={isMatch}");
+        
         if (!isMatch)
         {
-            isMatch = normalizedEventServerName.Contains(normalizedModelName) || 
-                     normalizedModelName.Contains(normalizedEventServerName);
+            // Only log, don't apply - exact match required to avoid data mixups
+            System.Diagnostics.Debug.WriteLine($"[ServerCardViewModel] SKIPPING update for '{Model.Name}' - server name mismatch (event: '{e.ServerName}')");
+            return;
         }
         
-        // Try matching by removing common suffixes
-        if (!isMatch)
-        {
-            string eventBase = normalizedEventServerName;
-            string modelBase = normalizedModelName;
-            string[] suffixes = { "-center", "-server", "-asa", "-ark" };
-            foreach (var suffix in suffixes)
-            {
-                if (eventBase.EndsWith(suffix))
-                    eventBase = eventBase.Substring(0, eventBase.Length - suffix.Length);
-                if (modelBase.EndsWith(suffix))
-                    modelBase = modelBase.Substring(0, modelBase.Length - suffix.Length);
-            }
-            
-            isMatch = eventBase == modelBase || 
-                     eventBase.Contains(modelBase) || 
-                     modelBase.Contains(eventBase);
-        }
+        System.Diagnostics.Debug.WriteLine($"[ServerCardViewModel] APPLYING update to '{Model.Name}': Status={e.Status}, Players={e.OnlinePlayers}/{e.MaxPlayers}, Day={e.GameDay}");
         
-        if (isMatch)
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
-            {
-                Model.Status = e.Status;
-                Model.CpuUsage = e.CpuUsage;
-                Model.MemoryUsage = e.MemoryUsage;
+            Model.Status = e.Status;
+            Model.CpuUsage = e.CpuUsage;
+            Model.MemoryUsage = e.MemoryUsage;
                 Model.OnlinePlayers = e.OnlinePlayers;
                 Model.MaxPlayers = e.MaxPlayers;
-                Model.ContainerPid = e.ContainerPid;
-
+                Model.GameDay = e.GameDay;
+                Model.ServerVersion = e.ServerVersion;
+                Model.ServerPing = e.ServerPing;
                 OnPropertyChanged(nameof(Status));
                 OnPropertyChanged(nameof(CpuUsage));
                 OnPropertyChanged(nameof(MemoryUsage));
                 OnPropertyChanged(nameof(PlayerInfo));
-                OnPropertyChanged(nameof(PidInfo));
-            });
-        }
+                OnPropertyChanged(nameof(GameDayInfo));
+                OnPropertyChanged(nameof(ServerVersionInfo));
+                OnPropertyChanged(nameof(ServerPingInfo));
+        });
     }
 
     private void OpenConfigWindow()

@@ -28,6 +28,9 @@
   "memory_usage": "Memory Usage",
   "port_info": "Port",
   "map_name": "Map",
+  "day": "Day",
+  "version": "Version",
+  "ping": "Ping",
   "global_log": "Global Log",
   "reconnect": "Reconnect",
   "connection_lost": "Connection Lost",
@@ -137,5 +140,7 @@
   "no_updates": "No updates available",
   "update_failed": "Update failed",
   "release_notes": "Release Notes:",
-  "no_release_notes": "No release notes available"
+  "no_release_notes": "No release notes available",
+  "pid": "PID",
+  "pid_not_available": "-"
 }

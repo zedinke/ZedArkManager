@@ -87,21 +87,37 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <!-- Port Info and PID -->
-                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,16">
+                <!-- Port Info and Game Day -->
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
                     <TextBlock Text="{Binding PortInfo, Mode=OneWay}" 
                                FontSize="13"
                                Foreground="#666"
                                Margin="0,0,16,0"/>
-                    <TextBlock Text="{Binding PidInfo, Mode=OneWay}" 
+                    <TextBlock Text="{Binding GameDayInfo, Mode=OneWay}" 
+                               FontSize="13"
+                               Foreground="#666"
+                               Margin="0,0,16,0"/>
+                    <TextBlock Text="{Binding PlayerInfo, Mode=OneWay}" 
+                               FontSize="13"
+                               Foreground="#666"/>
+                </StackPanel>
+
+                <!-- Server Version and Ping -->
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,16">
+                    <TextBlock Text="{Binding ServerVersionInfo, Mode=OneWay}" 
+                               FontSize="13"
+                               Foreground="#666"
+                               Margin="0,0,16,0"/>
+                    <TextBlock Text="{Binding ServerPingInfo, Mode=OneWay}" 
                                FontSize="13"
                                Foreground="#666"/>
                 </StackPanel>
 
                 <!-- Stats Grid -->
-                <Grid Grid.Row="1" Margin="0,0,0,16">
+                <Grid Grid.Row="2" Margin="0,0,0,16">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="*"/>
@@ -152,7 +168,7 @@
                 </Grid>
 
                 <!-- Action Buttons -->
-                <StackPanel Grid.Row="2" Margin="0,0,0,8">
+                <StackPanel Grid.Row="3" Margin="0,0,0,8">
                     <UniformGrid Columns="2" Rows="2" Margin="0,0,0,4">
                         <Button Content="Indítás" 
                                 Command="{Binding StartCommand}"

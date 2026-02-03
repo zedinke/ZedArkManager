@@ -28,6 +28,9 @@
   "memory_usage": "Memória Használat",
   "port_info": "Port",
   "map_name": "Térkép",
+  "day": "Nap",
+  "version": "Verzió",
+  "ping": "Ping",
   "global_log": "Globális Napló",
   "reconnect": "Újracsatlakozás",
   "connection_lost": "A kapcsolat megszakadt",
@@ -137,5 +140,7 @@
   "no_updates": "Nincs elérhető frissítés",
   "update_failed": "A frissítés sikertelen volt",
   "release_notes": "Frissítési jegyzetek:",
-  "no_release_notes": "Nincs elérhető frissítési jegyzet"
+  "no_release_notes": "Nincs elérhető frissítési jegyzet",
+  "pid": "PID",
+  "pid_not_available": "-"
 }

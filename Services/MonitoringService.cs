@@ -8,14 +8,16 @@ namespace ZedASAManager.Services;
 public class MonitoringService : IDisposable
 {
     private readonly SshService _sshService;
+    private ConnectionSettings? _connectionSettings;
     private PeriodicTimer? _timer;
     private CancellationTokenSource? _cancellationTokenSource;
     private bool _isRunning = false;
     private readonly ConcurrentDictionary<string, ServerStats> _serverStats = new();
     private readonly ConcurrentDictionary<string, string> _serverDirectoryPaths = new();
-    private readonly ConcurrentDictionary<string, int> _cachedPids = new(); // Cache PID-ek container neve alapján // ServerName -> DirectoryPath
+    private readonly ConcurrentDictionary<string, string> _cachedInstanceNames = new(); 
 
     public event EventHandler<ServerStatsEventArgs>? ServerStatsUpdated;
+    public event EventHandler<string>? StatusOutputReceived;
 
     public class ServerStatsEventArgs : EventArgs
     {
@@ -24,13 +26,15 @@ public class MonitoringService : IDisposable
         public double CpuUsage { get; set; }
         public string MemoryUsage { get; set; } = string.Empty;
         public double DiskUsagePercent { get; set; }
-        public double NetworkRxMbps { get; set; } // Download
-        public double NetworkTxMbps { get; set; } // Upload
-        public double SystemCpuUsage { get; set; } // Rendszer szintű CPU használat
-        public double SystemMemoryUsagePercent { get; set; } // Rendszer szintű RAM használat
+        public double NetworkRxMbps { get; set; }
+        public double NetworkTxMbps { get; set; }
+        public double SystemCpuUsage { get; set; }
+        public double SystemMemoryUsagePercent { get; set; }
         public int OnlinePlayers { get; set; }
         public int MaxPlayers { get; set; }
-        public int ContainerPid { get; set; } // Container PID
+        public int GameDay { get; set; }
+        public string ServerVersion { get; set; } = string.Empty;
+        public string ServerPing { get; set; } = string.Empty;
     }
 
     public class ServerStats
@@ -41,11 +45,13 @@ public class MonitoringService : IDisposable
         public double DiskUsagePercent { get; set; }
         public double NetworkRxMbps { get; set; }
         public double NetworkTxMbps { get; set; }
-        public double SystemCpuUsage { get; set; } // Rendszer szintű CPU használat
-        public double SystemMemoryUsagePercent { get; set; } // Rendszer szintű RAM használat
+        public double SystemCpuUsage { get; set; }
+        public double SystemMemoryUsagePercent { get; set; }
         public int OnlinePlayers { get; set; }
         public int MaxPlayers { get; set; }
-        public int ContainerPid { get; set; } // Container PID
+        public int GameDay { get; set; }
+        public string ServerVersion { get; set; } = string.Empty;
+        public string ServerPing { get; set; } = string.Empty;
     }
 
     public MonitoringService(SshService sshService)
@@ -53,15 +59,23 @@ public class MonitoringService : IDisposable
         _sshService = sshService;
     }
 
+    public void SetConnectionSettings(ConnectionSettings? settings)
+    {
+        _connectionSettings = settings;
+    }
+
     public void Start()
     {
         if (_isRunning)
+        {
+            System.Diagnostics.Debug.WriteLine("[MonitoringService] Already running");
             return;
-
+        }
         _isRunning = true;
         _cancellationTokenSource = new CancellationTokenSource();
-        _timer = new PeriodicTimer(TimeSpan.FromSeconds(1)); // Másodpercenkénti frissítés
-
+        _timer = new PeriodicTimer(TimeSpan.FromSeconds(2)); // 2 másodperc elég, hogy ne terhelje az SSH-t
+        System.Diagnostics.Debug.WriteLine("[MonitoringService] Starting monitoring loop");
+        OnStatusOutputReceived("[MonitoringService] Starting monitoring...");
         _ = Task.Run(async () => await MonitorLoopAsync(_cancellationTokenSource.Token));
     }
 
@@ -81,12 +95,11 @@ public class MonitoringService : IDisposable
             {
                 if (_sshService.IsConnected)
                 {
-                    // Run updates in parallel for better performance
-                    await Task.WhenAll(
-                        UpdateServerStatusesAsync(),
-                        UpdateServerStatsAsync(),
-                        UpdateSystemStatsAsync()
-                    );
+                    // Előbb a státusz, utána a statisztika
+                    await UpdateServerStatusesAsync();
+                    await UpdateServerStatsAsync();
+                    await UpdateSystemStatsAsync();
+                    await UpdatePlayerCountsAsync();
                 }
             }
             catch (Exception ex)
@@ -94,14 +107,8 @@ public class MonitoringService : IDisposable
                 System.Diagnostics.Debug.WriteLine($"Monitoring hiba: {ex.Message}");
             }
 
-            if (_timer != null)
-            {
-                await _timer.WaitForNextTickAsync(cancellationToken);
-            }
-            else
-            {
-                break;
-            }
+            if (_timer != null) await _timer.WaitForNextTickAsync(cancellationToken);
+            else break;
         }
     }
 
@@ -109,241 +116,378 @@ public class MonitoringService : IDisposable
     {
         try
         {
-            // Status is determined ONLY by PID: each server has its own container with PID
-            // We check if the container is actually RUNNING (not just exists)
-            // Container name format: asa_{instanceName}
-            // We use 'docker ps' to get only RUNNING containers, then check their PIDs
             if (_serverStats.Count == 0)
-                return;
-
-            System.Diagnostics.Debug.WriteLine($"=== Server Status Check (PID-based, RUNNING containers only) ===");
-
-            // First, get all RUNNING containers with their names
-            // docker ps only shows running containers
-            string runningContainersCommand = "docker ps --format '{{.Names}}' 2>/dev/null";
-            string runningContainersOutput = await _sshService.ExecuteCommandAsync(runningContainersCommand);
-            
-            var runningContainerPids = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            var lines = runningContainersOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-            
-            foreach (var line in lines)
             {
-                string containerName = line.Trim();
-                
-                // Only process asa_ containers
-                if (containerName.StartsWith("asa_"))
-                {
-                    // Get the actual ArkAscendedServer.exe process PID from the container
-                    // docker top shows processes in the container with their HOST PIDs
-                    // We need to find the ArkAscendedServer.exe process
-                    // Sort by PID descending and take the first (highest PID = main process)
-                    string topCommand = $"docker top {containerName} 2>/dev/null | grep -i 'ArkAscendedServer.exe' | sort -k2 -rn | head -1 | awk '{{print $2}}'";
-                    string pidOutput = await _sshService.ExecuteCommandAsync(topCommand);
-                    
-                    if (!string.IsNullOrWhiteSpace(pidOutput) && int.TryParse(pidOutput.Trim(), out int pid) && pid > 0)
-                    {
-                        runningContainerPids[containerName] = pid;
-                        System.Diagnostics.Debug.WriteLine($"Found RUNNING container: '{containerName}' with ArkAscendedServer.exe PID={pid}");
-                    }
-                    else
-                    {
-                        // Fallback: if ArkAscendedServer.exe not found, try to get the main process PID
-                        // Sort by PID descending to get the highest PID (main process)
-                        string fallbackCommand = $"docker top {containerName} 2>/dev/null | grep -v 'PID' | sort -k2 -rn | head -1 | awk '{{print $2}}'";
-                        string fallbackPidOutput = await _sshService.ExecuteCommandAsync(fallbackCommand);
-                        
-                        if (!string.IsNullOrWhiteSpace(fallbackPidOutput) && int.TryParse(fallbackPidOutput.Trim(), out int fallbackPid) && fallbackPid > 0)
-                        {
-                            runningContainerPids[containerName] = fallbackPid;
-                            System.Diagnostics.Debug.WriteLine($"Found RUNNING container: '{containerName}' with fallback PID={fallbackPid}");
-                        }
-                    }
-                }
+                System.Diagnostics.Debug.WriteLine("[MonitoringService] No servers registered, skipping status update");
+                return;
             }
-            
-            System.Diagnostics.Debug.WriteLine($"Total RUNNING asa_ containers: {runningContainerPids.Count}");
 
-            // Update status for all known servers based on RUNNING container PID
-            foreach (var serverName in _serverStats.Keys.ToList())
+            System.Diagnostics.Debug.WriteLine($"[MonitoringService] Updating status for {_serverStats.Count} server(s)");
+            System.Diagnostics.Debug.WriteLine($"[MonitoringService] Registered servers: {string.Join(", ", _serverStats.Keys)}");
+
+            // Process servers in parallel for better performance
+            var serverNames = _serverStats.Keys.ToList();
+            var tasks = serverNames.Select(async serverName =>
             {
                 var stats = _serverStats[serverName];
-                bool isOnline = false;
-                int pid = 0;
                 
-                // Get directory path for this server to find instance name
+                System.Diagnostics.Debug.WriteLine($"[MonitoringService] Processing server: '{serverName}'");
+                
+                // Get directory path for this server
                 if (!_serverDirectoryPaths.TryGetValue(serverName, out string? directoryPath) || string.IsNullOrEmpty(directoryPath))
                 {
-                    // If no directory path, try to use server name directly as instance name
-                    string containerName = $"asa_{serverName}";
-                    if (runningContainerPids.TryGetValue(containerName, out pid))
+                    System.Diagnostics.Debug.WriteLine($"[{serverName}] No directory path, marking offline");
+                    OnStatusOutputReceived($"[{serverName}] ERROR: No directory path found");
+                    stats.Status = ServerStatus.Offline;
+                    stats.CpuUsage = 0;
+                    stats.MemoryUsage = string.Empty;
+                    stats.OnlinePlayers = 0;
+                    stats.MaxPlayers = 0;
+                    stats.GameDay = 0;
+                    stats.ServerVersion = string.Empty;
+                    stats.ServerPing = string.Empty;
+                    OnServerStatsUpdated(serverName, stats);
+                    return;
+                }
+
+                string instanceName = await GetOrCacheInstanceName(serverName);
+                string containerName = $"asa_{instanceName}";
+                
+                System.Diagnostics.Debug.WriteLine($"[{serverName}] Checking - instanceName='{instanceName}', containerName='{containerName}', directoryPath='{directoryPath}'");
+                OnStatusOutputReceived($"[{serverName}] Checking status - instance: {instanceName}");
+                
+                // 1. Use POK-manager.sh -status to check if server is up
+                // Command: sudo ./POK-manager.sh -status Instance_servermappaneve (Instance_ nélkül, csak a servermappaneve)
+                string statusCmd = string.Empty;
+                string sudoPasswordPart = string.Empty;
+                
+                // Try to get password for sudo
+                if (_connectionSettings != null && !_connectionSettings.UseSshKey && !string.IsNullOrEmpty(_connectionSettings.EncryptedPassword))
+                {
+                    try
                     {
-                        isOnline = true;
-                        System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is ONLINE (container '{containerName}', PID={pid})");
+                        string password = EncryptionService.Decrypt(_connectionSettings.EncryptedPassword);
+                        if (!string.IsNullOrEmpty(password))
+                        {
+                            // Escape password for shell
+                            string escapedPassword = password.Replace("'", "'\\''");
+                            // Use echo to pipe password to sudo -S
+                            sudoPasswordPart = $"echo '{escapedPassword}' | sudo -S bash -c \"cd {directoryPath} && ./POK-manager.sh -status {instanceName} 2>&1\"";
+                        }
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is OFFLINE (container '{containerName}' not in running containers list)");
+                        System.Diagnostics.Debug.WriteLine($"[{serverName}] Password decryption failed: {ex.Message}");
+                        OnStatusOutputReceived($"[{serverName}] WARNING: Password decryption failed");
                     }
+                }
+                
+                // Use sudo -n first (non-interactive, requires sudoers config), fallback to sudo with password or without sudo
+                if (string.IsNullOrEmpty(sudoPasswordPart))
+                {
+                    // Try sudo -n first, then fallback to without sudo
+                    statusCmd = $"cd \"{directoryPath}\" && (sudo -n ./POK-manager.sh -status {instanceName} 2>&1 || ./POK-manager.sh -status {instanceName} 2>&1)";
                 }
                 else
                 {
-                    // Find instance name from Instance_* directory
-                    string instanceName = await GetInstanceNameForServerAsync(serverName, directoryPath);
+                    statusCmd = sudoPasswordPart;
+                }
+                
+                System.Diagnostics.Debug.WriteLine($"[{serverName}] Executing command: {statusCmd}");
+                
+                try
+                {
+                    string statusOutput = await _sshService.ExecuteCommandAsync(statusCmd);
+                    System.Diagnostics.Debug.WriteLine($"[{serverName}] POK-manager.sh -status output: '{statusOutput}'");
                     
-                    if (!string.IsNullOrEmpty(instanceName))
+                    // Log status output for visibility
+                    if (string.IsNullOrWhiteSpace(statusOutput))
                     {
-                        // Container name is: asa_{instanceName}
-                        string containerName = $"asa_{instanceName}";
-                        if (runningContainerPids.TryGetValue(containerName, out pid))
-                        {
-                            isOnline = true;
-                            System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is ONLINE (instance='{instanceName}', container='{containerName}', PID={pid})");
-                        }
-                        else
-                        {
-                            System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is OFFLINE (instance='{instanceName}', container='{containerName}' not in running containers list)");
-                        }
+                        OnStatusOutputReceived($"[{serverName}] Status output: (empty)");
                     }
                     else
                     {
-                        // Fallback: try server name as instance name
-                        string containerName = $"asa_{serverName}";
-                        if (runningContainerPids.TryGetValue(containerName, out pid))
-                        {
-                            isOnline = true;
-                            System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is ONLINE (fallback container '{containerName}', PID={pid})");
-                        }
-                        else
-                        {
-                            System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is OFFLINE (container '{containerName}' not in running containers list)");
-                        }
+                        OnStatusOutputReceived($"[{serverName}] Status output: {statusOutput.Trim()}");
                     }
-                }
                 
-                // IMPORTANT: Only set status based on PID check, NOT on memory/CPU stats
-                stats.Status = isOnline ? ServerStatus.Online : ServerStatus.Offline;
-                stats.ContainerPid = pid; // Store PID (0 if offline)
-                
-                // If offline, immediately reset CPU and RAM stats
-                if (!isOnline)
-                {
+                    // Check if server is up - more precise matching
+                    // Look for "server is up" but exclude cases where it says "not up", "down", "stopped", etc.
+                    string lowerOutput = statusOutput.ToLowerInvariant();
+                    bool hasServerIsUp = lowerOutput.Contains("server is up");
+                    bool hasNegativeIndicators = lowerOutput.Contains("server is down") ||
+                                               lowerOutput.Contains("server is not up") ||
+                                               lowerOutput.Contains("not running") ||
+                                               lowerOutput.Contains("stopped") ||
+                                               lowerOutput.Contains("offline") ||
+                                               lowerOutput.Contains("does not exist") ||
+                                               lowerOutput.Contains("not currently running");
+                    
+                    // Server is up only if we have "server is up" AND no negative indicators
+                    bool serverIsUp = hasServerIsUp && !hasNegativeIndicators;
+                    
+                    System.Diagnostics.Debug.WriteLine($"[{serverName}] hasServerIsUp={hasServerIsUp}, hasNegativeIndicators={hasNegativeIndicators}, serverIsUp={serverIsUp}");
+                    
+                    if (!serverIsUp)
+                    {
+                    stats.Status = ServerStatus.Offline;
                     stats.CpuUsage = 0;
                     stats.MemoryUsage = string.Empty;
+                    stats.OnlinePlayers = 0;
+                    stats.MaxPlayers = 0;
+                    stats.GameDay = 0;
+                    stats.ServerVersion = string.Empty;
+                    stats.ServerPing = string.Empty;
+                    System.Diagnostics.Debug.WriteLine($"[{serverName}] ✗ OFFLINE");
+                    OnStatusOutputReceived($"[{serverName}] Result: OFFLINE");
+                    OnServerStatsUpdated(serverName, stats);
+                    return; // Return from async lambda instead of continue
+                    }
+                    
+                    // 2. Server is up - parse additional info from status output
+                    stats.Status = ServerStatus.Online;
+                    
+                    // Parse Players: X/Y format - try multiple patterns
+                    System.Diagnostics.Debug.WriteLine($"[{serverName}] ========== FULL STATUS OUTPUT START ==========");
+                    System.Diagnostics.Debug.WriteLine($"[{serverName}] {statusOutput}");
+                    System.Diagnostics.Debug.WriteLine($"[{serverName}] ========== FULL STATUS OUTPUT END ==========");
+                    
+                    // Try multiple patterns for players - the format might vary
+                    System.Text.RegularExpressions.Match? playersMatch = null;
+                    
+                    // Pattern 1: "Players: X / Y" or "Players X / Y" (with spaces around /)
+                    playersMatch = System.Text.RegularExpressions.Regex.Match(statusOutput, @"[Pp]layers[:\s]+\s*(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    
+                    // Pattern 2: "Players: X/Y" or "Players X/Y" (without spaces around /)
+                    if (!playersMatch.Success)
+                    {
+                        playersMatch = System.Text.RegularExpressions.Regex.Match(statusOutput, @"[Pp]layers[:\s]+(\d+)/(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    }
+                    
+                    // Pattern 3: "Online: X / Y" or "Online X / Y" (with spaces around /)
+                    if (!playersMatch.Success)
+                    {
+                        playersMatch = System.Text.RegularExpressions.Regex.Match(statusOutput, @"[Oo]nline[:\s]+\s*(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    }
+                    
+                    // Pattern 4: "Online: X/Y" or "Online X/Y" (without spaces around /)
+                    if (!playersMatch.Success)
+                    {
+                        playersMatch = System.Text.RegularExpressions.Regex.Match(statusOutput, @"[Oo]nline[:\s]+(\d+)/(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    }
+                    
+                    // Pattern 5: "Játékosok: X / Y" (Hungarian, with spaces)
+                    if (!playersMatch.Success)
+                    {
+                        playersMatch = System.Text.RegularExpressions.Regex.Match(statusOutput, @"[Jj]átékosok[:\s]+\s*(\d+)\s*/\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    }
+                    
+                    // Pattern 6: Find ALL X / Y or X/Y patterns and pick the most likely one (player count)
+                    if (!playersMatch.Success)
+                    {
+                        // Try with spaces first: "X / Y"
+                        var allMatches = System.Text.RegularExpressions.Regex.Matches(statusOutput, @"(\d{1,3})\s*/\s*(\d{1,3})", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        System.Diagnostics.Debug.WriteLine($"[{serverName}] Found {allMatches.Count} X/Y patterns in output");
+                        
+                        foreach (System.Text.RegularExpressions.Match match in allMatches)
+                        {
+                            if (match.Groups.Count >= 3)
+                            {
+                                if (int.TryParse(match.Groups[1].Value, out int online) && 
+                                    int.TryParse(match.Groups[2].Value, out int max))
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"[{serverName}] Checking pattern: {online}/{max}");
+                                    
+                                    // Validate: first number should be <= second, and second should be reasonable (10-200)
+                                    // This is likely a player count
+                                    if (online <= max && max >= 10 && max <= 200)
+                                    {
+                                        System.Diagnostics.Debug.WriteLine($"[{serverName}] ✓ Valid player count pattern found: {online}/{max}");
+                                        playersMatch = match;
+                                        break; // Use the first valid match
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (playersMatch != null && playersMatch.Success && playersMatch.Groups.Count >= 3)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[{serverName}] ✓ Players match found: Group1='{playersMatch.Groups[1].Value}', Group2='{playersMatch.Groups[2].Value}'");
+                        if (int.TryParse(playersMatch.Groups[1].Value, out int onlinePlayers))
+                        {
+                            stats.OnlinePlayers = onlinePlayers;
+                        }
+                        if (int.TryParse(playersMatch.Groups[2].Value, out int maxPlayers))
+                        {
+                            stats.MaxPlayers = maxPlayers;
+                        }
+                        System.Diagnostics.Debug.WriteLine($"[{serverName}] ✓ Parsed players: {stats.OnlinePlayers}/{stats.MaxPlayers}");
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[{serverName}] ✗ WARNING: Could not parse players from status output");
+                        System.Diagnostics.Debug.WriteLine($"[{serverName}] Attempted patterns: Players, Online, Játékosok, generic X/Y");
+                        stats.OnlinePlayers = 0;
+                        stats.MaxPlayers = 0;
+                    }
+                    
+                    // Parse Day: X format
+                    var dayMatch = System.Text.RegularExpressions.Regex.Match(statusOutput, @"Day:\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (dayMatch.Success && dayMatch.Groups.Count >= 2)
+                    {
+                        if (int.TryParse(dayMatch.Groups[1].Value, out int gameDay))
+                        {
+                            stats.GameDay = gameDay;
+                        }
+                    }
+                    
+                    // Parse Server Version: X.XX format
+                    var versionMatch = System.Text.RegularExpressions.Regex.Match(statusOutput, @"Server Version:\s*([\d.]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (versionMatch.Success && versionMatch.Groups.Count >= 2)
+                    {
+                        stats.ServerVersion = versionMatch.Groups[1].Value.Trim();
+                    }
+                    
+                    // Parse Server Ping: X ms format
+                    var pingMatch = System.Text.RegularExpressions.Regex.Match(statusOutput, @"Server Ping:\s*(\d+)\s*ms", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (pingMatch.Success && pingMatch.Groups.Count >= 2)
+                    {
+                        stats.ServerPing = pingMatch.Groups[1].Value.Trim() + " ms";
+                    }
+                    
+                    System.Diagnostics.Debug.WriteLine($"[{serverName}] ✓ ONLINE - Players: {stats.OnlinePlayers}/{stats.MaxPlayers}, Day: {stats.GameDay}, Version: {stats.ServerVersion}, Ping: {stats.ServerPing}");
+                    OnStatusOutputReceived($"[{serverName}] Result: ONLINE - Players: {stats.OnlinePlayers}/{stats.MaxPlayers}, Day: {stats.GameDay}, Version: {stats.ServerVersion}, Ping: {stats.ServerPing}");
+                    
+                    OnServerStatsUpdated(serverName, stats);
                 }
-                
-                // Always notify to ensure UI is updated
-                OnServerStatsUpdated(serverName, stats);
-            }
-            
-            System.Diagnostics.Debug.WriteLine($"=== End Server Status Check ===");
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[{serverName}] Status check error: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
+                    OnStatusOutputReceived($"[{serverName}] ERROR: {ex.Message}");
+                    stats.Status = ServerStatus.Offline;
+                    stats.CpuUsage = 0;
+                    stats.MemoryUsage = string.Empty;
+                    stats.OnlinePlayers = 0;
+                    stats.MaxPlayers = 0;
+                    stats.GameDay = 0;
+                    stats.ServerVersion = string.Empty;
+                    stats.ServerPing = string.Empty;
+                    OnServerStatsUpdated(serverName, stats);
+                }
+            });
+
+            // Wait for all server status checks to complete in parallel
+            await Task.WhenAll(tasks);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Status frissítési hiba: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
+            OnStatusOutputReceived($"ERROR: Status update failed - {ex.Message}");
         }
     }
 
-    private async Task<string> GetInstanceNameForServerAsync(string serverName, string directoryPath)
+    private async Task<string> GetMapNameFromYamlAsync(string directoryPath, string instanceName)
     {
         try
         {
-            // Find Instance_* directories in the server directory
-            // The structure is: /home/user/asa_server/Cluster_Name_servermappaneve/Instance_servermappaneve
-            // We need to find the Instance_* directory and extract the name after Instance_
-            string findInstanceCommand = $"find \"{directoryPath}\" -maxdepth 1 -type d -name 'Instance_*' 2>/dev/null | head -1";
-            string foundInstancePath = await _sshService.ExecuteCommandAsync(findInstanceCommand);
+            // Find docker-compose file in Instance_* directory
+            string dockerComposePath = string.Empty;
+            string findComposeCommand = $"find \"{directoryPath}/Instance_{instanceName}\" -maxdepth 1 -name 'docker-compose-*.yaml' -type f 2>/dev/null | head -1";
+            string foundCompose = await _sshService.ExecuteCommandAsync(findComposeCommand);
             
-            if (!string.IsNullOrEmpty(foundInstancePath.Trim()))
+            if (!string.IsNullOrEmpty(foundCompose.Trim()))
             {
-                // Extract instance name from path like: /path/to/Instance_aberrationteszt
-                string instancePath = foundInstancePath.Trim();
-                int lastSlash = instancePath.LastIndexOf('/');
-                if (lastSlash >= 0 && lastSlash < instancePath.Length - 1)
+                dockerComposePath = foundCompose.Trim();
+            }
+            else
+            {
+                // Fallback: try to find any Instance_* directory and docker-compose file
+                string findInstanceDirCommand = $"ls -d \"{directoryPath}\"/Instance_* 2>/dev/null | head -1";
+                string instanceDir = await _sshService.ExecuteCommandAsync(findInstanceDirCommand);
+                if (!string.IsNullOrEmpty(instanceDir.Trim()))
                 {
-                    string instanceDirName = instancePath.Substring(lastSlash + 1);
-                    if (instanceDirName.StartsWith("Instance_"))
+                    string instanceDirPath = instanceDir.Trim();
+                    string findInInstanceCommand = $"find \"{instanceDirPath}\" -maxdepth 1 -name 'docker-compose-*.yaml' -type f 2>/dev/null | head -1";
+                    string foundInInstance = await _sshService.ExecuteCommandAsync(findInInstanceCommand);
+                    if (!string.IsNullOrEmpty(foundInInstance.Trim()))
                     {
-                        string instanceName = instanceDirName.Substring("Instance_".Length);
-                        System.Diagnostics.Debug.WriteLine($"Found instance name '{instanceName}' for server '{serverName}' from path '{instancePath}'");
-                        return instanceName;
+                        dockerComposePath = foundInInstance.Trim();
                     }
                 }
-            }
-            
-            // Fallback: if we couldn't find Instance_* directory, try to extract from server name
-            if (serverName.Contains('_'))
-            {
-                string[] parts = serverName.Split('_');
-                if (parts.Length > 1)
+                
+                // Last fallback: try the expected path
+                if (string.IsNullOrEmpty(dockerComposePath))
                 {
-                    // Take the last part as instance name
-                    string instanceName = parts[parts.Length - 1];
-                    System.Diagnostics.Debug.WriteLine($"Using fallback instance name '{instanceName}' for server '{serverName}' (extracted from server name)");
-                    return instanceName;
+                    dockerComposePath = $"{directoryPath}/Instance_{instanceName}/docker-compose-{instanceName}.yaml";
                 }
             }
             
-            // Last fallback: use server name as instance name
-            System.Diagnostics.Debug.WriteLine($"Using server name '{serverName}' as instance name (last fallback)");
-            return serverName;
+            // Check if file exists
+            string checkFileCommand = $"test -f \"{dockerComposePath}\" && echo \"exists\" || echo \"notfound\"";
+            string fileCheck = await _sshService.ExecuteCommandAsync(checkFileCommand);
+            
+            if (!fileCheck.Trim().Contains("exists"))
+            {
+                System.Diagnostics.Debug.WriteLine($"Docker-compose file not found at: {dockerComposePath}");
+                return string.Empty;
+            }
+            
+            // Read the entire docker-compose file and search for MAP_NAME
+            string readComposeCommand = $"cat \"{dockerComposePath}\" 2>/dev/null";
+            string composeFileContent = await _sshService.ExecuteCommandAsync(readComposeCommand);
+            
+            if (string.IsNullOrEmpty(composeFileContent))
+            {
+                return string.Empty;
+            }
+            
+            // Parse MAP_NAME=value (can be with or without indentation/spaces)
+            // Try multiple patterns: MAP_NAME=value, MAP_NAME = value, - MAP_NAME=value (YAML list item)
+            var mapNameMatch = Regex.Match(composeFileContent, @"MAP_NAME\s*=\s*([^\s\n\r]+)", RegexOptions.IgnoreCase);
+            if (mapNameMatch.Success && mapNameMatch.Groups.Count > 1)
+            {
+                string mapName = mapNameMatch.Groups[1].Value.Trim();
+                // Remove quotes if present
+                if ((mapName.StartsWith('"') && mapName.EndsWith('"')) || (mapName.StartsWith('\'') && mapName.EndsWith('\'')))
+                {
+                    mapName = mapName.Substring(1, mapName.Length - 2);
+                }
+                System.Diagnostics.Debug.WriteLine($"✓ Found MAP_NAME='{mapName}' in docker-compose file: {dockerComposePath}");
+                return mapName;
+            }
+            
+            System.Diagnostics.Debug.WriteLine($"✗ MAP_NAME not found in docker-compose file: {dockerComposePath}");
+            System.Diagnostics.Debug.WriteLine($"File content preview (first 500 chars): {composeFileContent.Substring(0, Math.Min(500, composeFileContent.Length))}");
+            return string.Empty;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error finding instance name for server '{serverName}': {ex.Message}");
-            return serverName; // Fallback to server name
+            System.Diagnostics.Debug.WriteLine($"Error reading MAP_NAME from yaml for instance '{instanceName}': {ex.Message}");
+            return string.Empty;
         }
     }
 
-    private double ParseMemoryUsageToGb(string memoryUsage)
+    private async Task<string> GetOrCacheInstanceName(string serverName)
     {
-        // Parse string like "9.14GiB / 20GiB" to get used RAM in GB
-        try
-        {
-            if (string.IsNullOrEmpty(memoryUsage))
-                return 0;
+        if (_cachedInstanceNames.TryGetValue(serverName, out var cachedName)) return cachedName;
 
-            // Split by "/" to get used and total
-            var parts = memoryUsage.Split('/');
-            if (parts.Length < 1)
-                return 0;
-
-            string usedPart = parts[0].Trim();
-            
-            // Extract number and unit (e.g., "9.14GiB" -> 9.14, "GiB")
-            var match = Regex.Match(usedPart, @"([\d.]+)\s*(GiB|MiB|KiB|GB|MB|KB|B)", RegexOptions.IgnoreCase);
-            if (match.Success && match.Groups.Count >= 3)
-            {
-                if (double.TryParse(match.Groups[1].Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double value))
-                {
-                    string unit = match.Groups[2].Value.ToUpperInvariant();
-                    
-                    // Convert to GB
-                    return unit switch
-                    {
-                        "GB" or "GIB" => value,
-                        "MB" or "MIB" => value / 1024.0,
-                        "KB" or "KIB" => value / (1024.0 * 1024.0),
-                        "B" => value / (1024.0 * 1024.0 * 1024.0),
-                        _ => value // Default to GB if unknown
-                    };
-                }
-            }
-        }
-        catch (Exception ex)
+        if (_serverDirectoryPaths.TryGetValue(serverName, out var path))
         {
-            System.Diagnostics.Debug.WriteLine($"RAM parse hiba: {ex.Message}");
+            string name = await GetInstanceNameForServerAsync(serverName, path);
+            _cachedInstanceNames[serverName] = name;
+            return name;
         }
-        
-        return 0;
+        return serverName;
     }
 
     private async Task UpdateServerStatsAsync()
     {
         try
         {
-            if (_serverStats.Count == 0)
-                return;
-            
+            if (_serverStats.Count == 0) return;
+
             // Get CPU cores count to calculate percentage of total system CPU
             string coresCommand = "nproc";
             string coresOutput = await _sshService.ExecuteCommandAsync(coresCommand);
@@ -352,207 +496,131 @@ public class MonitoringService : IDisposable
             {
                 cpuCores = parsedCores;
             }
-                
-            // Get stats for all containers, then filter for our asa_ containers
-            // CPUPerc shows CPU usage - if it's 200% on a 4-core system, that means 2 cores fully used
-            // To show as percentage of total system: (200% / 4 cores) * 100 = 50%
-            // We want to show: out of all physical cores, what percentage does this server use
-            string command = "docker stats --no-stream --format \"{{.Name}}|{{.MemUsage}}|{{.CPUPerc}}\" 2>/dev/null";
+
+            // A docker stats a legmegbízhatóbb forrás a konténer szintű erőforrásra
+            string command = "docker stats --no-stream --format \"{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}\" 2>/dev/null";
             string output = await _sshService.ExecuteCommandAsync(command);
-
             var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-            
-            // Create a dictionary to map container names to their stats
-            var containerStats = new Dictionary<string, (string memoryUsage, double cpuUsage)>();
-            
-            System.Diagnostics.Debug.WriteLine($"=== Docker Stats Output ===");
-            System.Diagnostics.Debug.WriteLine($"Raw output: {output}");
-            System.Diagnostics.Debug.WriteLine($"Lines count: {lines.Length}");
-            
-            foreach (var line in lines)
-            {
-                var parts = line.Split('|');
-                if (parts.Length >= 3)
-                {
-                    string containerName = parts[0].Trim();
-                    string memoryUsage = parts[1].Trim();
-                    string cpuPercent = parts[2].Trim().TrimEnd('%').Trim();
 
-                    // Only process containers that start with "asa_"
-                    if (!containerName.StartsWith("asa_"))
-                        continue;
-
-                    System.Diagnostics.Debug.WriteLine($"Processing container: {containerName}, Memory: {memoryUsage}, CPU: {cpuPercent}");
-
-                    // Parse CPU percentage
-                    double cpuUsage = 0;
-                    if (!string.IsNullOrEmpty(cpuPercent))
-                    {
-                        // Remove any non-numeric characters except decimal point
-                        string cleanCpu = Regex.Replace(cpuPercent, @"[^\d.]", "");
-                        if (double.TryParse(cleanCpu, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double parsedCpu))
-                        {
-                            // CPUPerc is percentage per core, so divide by number of cores to get total system percentage
-                            // Example: 8% on 4 cores = 8/4 = 2% of total system
-                            cpuUsage = parsedCpu / cpuCores;
-                            
-                            // Cap at 100% since that's the maximum of total system
-                            cpuUsage = Math.Min(100.0, cpuUsage);
-                        }
-                    }
-                    
-                    // Store container stats
-                    containerStats[containerName] = (memoryUsage, cpuUsage);
-                    System.Diagnostics.Debug.WriteLine($"Stored stats for container '{containerName}': Memory={memoryUsage}, CPU={cpuUsage:F2}%");
-                }
-            }
-            
-            System.Diagnostics.Debug.WriteLine($"Total asa_ containers found: {containerStats.Count}");
-            
-            // Now update all tracked servers, matching containers to servers
-            // IMPORTANT: Only update stats for servers that are actually ONLINE (based on status)
-            // Use the same instance name logic as UpdateServerStatusesAsync
             foreach (var serverName in _serverStats.Keys.ToList())
             {
                 var stats = _serverStats[serverName];
-                
-                // Only update stats if server is ONLINE
-                // If server is offline, reset stats to 0/empty
-                if (stats.Status != ServerStatus.Online)
+                if (stats.Status != ServerStatus.Online) 
                 {
                     stats.CpuUsage = 0;
                     stats.MemoryUsage = string.Empty;
-                    System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is OFFLINE, resetting stats to 0/empty");
                     OnServerStatsUpdated(serverName, stats);
                     continue;
                 }
-                
-                // Server is online, find the correct container using instance name logic
-                bool foundMatch = false;
-                string? containerNameToMatch = null;
-                
-                // Get directory path for this server to find instance name (same logic as UpdateServerStatusesAsync)
-                if (!_serverDirectoryPaths.TryGetValue(serverName, out string? directoryPath) || string.IsNullOrEmpty(directoryPath))
+
+                string containerName = $"asa_{await GetOrCacheInstanceName(serverName)}";
+                var line = lines.FirstOrDefault(l => l.StartsWith(containerName + "|"));
+
+                if (line != null)
                 {
-                    // If no directory path, try to use server name directly as instance name
-                    containerNameToMatch = $"asa_{serverName}";
+                    var parts = line.Split('|');
+                    if (parts.Length >= 3)
+                    {
+                        // Parse CPU percentage
+                        string cpuPercent = parts[1].Trim().TrimEnd('%').Trim();
+                        double cpuUsage = 0;
+                        if (!string.IsNullOrEmpty(cpuPercent))
+                        {
+                            string cleanCpu = Regex.Replace(cpuPercent, @"[^\d.]", "");
+                            if (double.TryParse(cleanCpu, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double parsedCpu))
+                            {
+                                // CPUPerc is percentage per core, so divide by number of cores to get total system percentage
+                                cpuUsage = parsedCpu / cpuCores;
+                                cpuUsage = Math.Min(100.0, cpuUsage);
+                            }
+                        }
+                        
+                        stats.CpuUsage = cpuUsage;
+                        stats.MemoryUsage = parts[2].Trim();
+                    }
                 }
                 else
                 {
-                    // Find instance name from Instance_* directory
-                    string instanceName = await GetInstanceNameForServerAsync(serverName, directoryPath);
-                    
-                    if (!string.IsNullOrEmpty(instanceName))
-                    {
-                        // Container name is: asa_{instanceName}
-                        containerNameToMatch = $"asa_{instanceName}";
-                    }
-                    else
-                    {
-                        // Fallback: try server name as instance name
-                        containerNameToMatch = $"asa_{serverName}";
-                    }
-                }
-                
-                // Now try to find matching container in the stats
-                if (!string.IsNullOrEmpty(containerNameToMatch))
-                {
-                    // Try exact match first
-                    if (containerStats.TryGetValue(containerNameToMatch, out var matchedStats))
-                    {
-                        var (memoryUsage, cpuUsage) = matchedStats;
-                        stats.CpuUsage = cpuUsage;
-                        stats.MemoryUsage = memoryUsage;
-                        foundMatch = true;
-                        System.Diagnostics.Debug.WriteLine($"Matched server '{serverName}' to container '{containerNameToMatch}': CPU={cpuUsage:F2}%, Memory={memoryUsage}");
-                    }
-                }
-                
-                // If no match found, reset stats to 0/empty (server might have just stopped)
-                if (!foundMatch)
-                {
                     stats.CpuUsage = 0;
                     stats.MemoryUsage = string.Empty;
-                    System.Diagnostics.Debug.WriteLine($"No container match for server '{serverName}' (expected container: '{containerNameToMatch}'), resetting stats. Available containers: {string.Join(", ", containerStats.Keys)}");
                 }
                 
-                // Always notify to ensure UI is updated
                 OnServerStatsUpdated(serverName, stats);
+            }
+        }
+        catch (Exception ex) 
+        { 
+            System.Diagnostics.Debug.WriteLine($"Stats hiba: {ex.Message}"); 
+        }
+    }
+
+    private async Task<string> GetInstanceNameForServerAsync(string serverName, string directoryPath)
+    {
+        try
+        {
+            string cmd = $"find \"{directoryPath}\" -maxdepth 1 -type d -name 'Instance_*' 2>/dev/null | head -1";
+            string path = await _sshService.ExecuteCommandAsync(cmd);
+            if (!string.IsNullOrEmpty(path.Trim()))
+            {
+                string dirName = path.Trim().Split('/').Last();
+                if (dirName.StartsWith("Instance_"))
+                {
+                    return dirName.Replace("Instance_", "");
+                }
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Stats frissítési hiba: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"Error finding instance name for server '{serverName}': {ex.Message}");
         }
-    }
-
-    public void RegisterServer(string serverName, string? directoryPath = null)
-    {
-        _serverStats.TryAdd(serverName, new ServerStats { Status = ServerStatus.Offline });
-        if (!string.IsNullOrEmpty(directoryPath))
-        {
-            _serverDirectoryPaths.AddOrUpdate(serverName, directoryPath, (key, oldValue) => directoryPath);
-        }
-    }
-
-    public void UnregisterServer(string serverName)
-    {
-        _serverStats.TryRemove(serverName, out _);
-        _serverDirectoryPaths.TryRemove(serverName, out _);
         
-        // Also remove cached PID if we can find the container name
-        // Note: We don't have direct access to container name here, so we'll let it expire naturally
-        // or it will be removed when the container stops
-    }
-
-    public ServerStats? GetServerStats(string serverName)
-    {
-        _serverStats.TryGetValue(serverName, out var stats);
-        return stats;
+        // Fallback: if we couldn't find Instance_* directory, try to extract from server name
+        if (serverName.Contains('_'))
+        {
+            string[] parts = serverName.Split('_');
+            if (parts.Length > 1)
+            {
+                return parts[parts.Length - 1];
+            }
+        }
+        
+        return serverName;
     }
 
     private async Task UpdateSystemStatsAsync()
     {
         try
         {
-            // System CPU usage: top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1
-            // Vagy: vmstat 1 2 | tail -1 | awk '{print 100 - $15}'
-            // Egyszerűbb: top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}'
+            // System CPU usage
             string cpuCommand = "top -bn1 | grep 'Cpu(s)' | sed 's/.*, *\\([0-9.]*\\)%* id.*/\\1/' | awk '{print 100 - $1}'";
             string cpuOutput = await _sshService.ExecuteCommandAsync(cpuCommand);
-            
             double systemCpuUsage = 0;
             if (double.TryParse(cpuOutput.Trim(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double parsedCpu))
             {
                 systemCpuUsage = parsedCpu;
             }
-            
-            // System Memory usage: free | grep Mem | awk '{printf "%.2f", ($3/$2) * 100.0}'
+
+            // System Memory usage
             string memoryCommand = "free | grep Mem | awk '{printf \"%.2f\", ($3/$2) * 100.0}'";
             string memoryOutput = await _sshService.ExecuteCommandAsync(memoryCommand);
-            
             double systemMemoryUsage = 0;
             if (double.TryParse(memoryOutput.Trim(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double parsedMemory))
             {
                 systemMemoryUsage = parsedMemory;
             }
-            
-            // Disk usage: df -h / | tail -1 | awk '{print $5}' | sed 's/%//'
+
+            // Disk usage
             string diskCommand = "df -h / | tail -1 | awk '{print $5}' | sed 's/%//'";
             string diskOutput = await _sshService.ExecuteCommandAsync(diskCommand);
-            
             double diskUsage = 0;
             if (double.TryParse(diskOutput.Trim(), out double parsedDisk))
             {
                 diskUsage = parsedDisk;
             }
 
-            // Network stats: cat /proc/net/dev | grep -E 'eth0|ens|enp' | awk '{rx+=$2; tx+=$10} END {print rx, tx}'
-            // Vagy használhatjuk az iftop-ot vagy más eszközt
-            // Egyszerűsített verzió: docker stats --no-stream --format "{{.NetIO}}"
+            // Network stats
             string networkCommand = "cat /proc/net/dev | grep -E 'eth0|ens|enp' | head -1 | awk '{rx=$2; tx=$10; print rx, tx}'";
             string networkOutput = await _sshService.ExecuteCommandAsync(networkCommand);
-            
             double networkRx = 0;
             double networkTx = 0;
             var networkParts = networkOutput.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -588,62 +656,6 @@ public class MonitoringService : IDisposable
         }
     }
 
-    protected virtual void OnServerStatsUpdated(string serverName, ServerStats stats)
-    {
-        var args = new ServerStatsEventArgs
-        {
-            ServerName = serverName,
-            Status = stats.Status,
-            CpuUsage = stats.CpuUsage,
-            MemoryUsage = stats.MemoryUsage,
-            DiskUsagePercent = stats.DiskUsagePercent,
-            NetworkRxMbps = stats.NetworkRxMbps,
-            NetworkTxMbps = stats.NetworkTxMbps,
-            OnlinePlayers = stats.OnlinePlayers,
-            MaxPlayers = stats.MaxPlayers,
-            ContainerPid = stats.ContainerPid
-        };
-
-        ServerStatsUpdated?.Invoke(this, args);
-    }
-
-    private double ParseNetworkSize(string size)
-    {
-        // Parse size like "1.2GB", "500MB", "0B", etc. and convert to Mbps
-        size = size.Trim();
-        if (string.IsNullOrEmpty(size) || size == "0B")
-            return 0;
-
-        double multiplier = 1;
-        if (size.EndsWith("GB", StringComparison.OrdinalIgnoreCase))
-        {
-            multiplier = 8 * 1000; // GB to Mbps (1 GB = 1000 MB, 1 MB = 8 Mbps)
-            size = size.Substring(0, size.Length - 2).Trim();
-        }
-        else if (size.EndsWith("MB", StringComparison.OrdinalIgnoreCase))
-        {
-            multiplier = 8; // MB to Mbps
-            size = size.Substring(0, size.Length - 2).Trim();
-        }
-        else if (size.EndsWith("KB", StringComparison.OrdinalIgnoreCase))
-        {
-            multiplier = 8.0 / 1000.0; // KB to Mbps
-            size = size.Substring(0, size.Length - 2).Trim();
-        }
-        else if (size.EndsWith("B", StringComparison.OrdinalIgnoreCase))
-        {
-            multiplier = 8.0 / 1_000_000.0; // Bytes to Mbps
-            size = size.Substring(0, size.Length - 1).Trim();
-        }
-
-        if (double.TryParse(size, out double value))
-        {
-            return value * multiplier;
-        }
-
-        return 0;
-    }
-
     private async Task UpdatePlayerCountsAsync()
     {
         try
@@ -658,68 +670,16 @@ public class MonitoringService : IDisposable
                 // Get directory path for this server
                 if (!_serverDirectoryPaths.TryGetValue(serverName, out string? directoryPath) || string.IsNullOrEmpty(directoryPath))
                 {
-                    // If no directory path, skip this server
                     continue;
                 }
 
-                // Extract instance name from Instance_* directories
-                // The structure is: /home/user/asa_server/Cluster_Name_servermappaneve/Instance_servermappaneve
-                // We need to find the Instance_* directory and extract the name after Instance_
-                string instanceName = string.Empty;
-                
-                try
-                {
-                    // Find Instance_* directories in the server directory
-                    string findInstanceCommand = $"find \"{directoryPath}\" -maxdepth 1 -type d -name 'Instance_*' 2>/dev/null | head -1";
-                    string foundInstancePath = await _sshService.ExecuteCommandAsync(findInstanceCommand);
-                    
-                    if (!string.IsNullOrEmpty(foundInstancePath.Trim()))
-                    {
-                        // Extract instance name from path like: /path/to/Instance_aberrationteszt
-                        string instancePath = foundInstancePath.Trim();
-                        int lastSlash = instancePath.LastIndexOf('/');
-                        if (lastSlash >= 0 && lastSlash < instancePath.Length - 1)
-                        {
-                            string instanceDirName = instancePath.Substring(lastSlash + 1);
-                            if (instanceDirName.StartsWith("Instance_"))
-                            {
-                                instanceName = instanceDirName.Substring("Instance_".Length);
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Error finding instance directory: {ex.Message}");
-                }
-
-                // Fallback: if we couldn't find Instance_* directory, try to extract from server name
-                if (string.IsNullOrEmpty(instanceName))
-                {
-                    if (serverName.Contains('_'))
-                    {
-                        string[] parts = serverName.Split('_');
-                        if (parts.Length > 1)
-                        {
-                            // Take the last part as instance name
-                            instanceName = parts[parts.Length - 1];
-                        }
-                    }
-                    else
-                    {
-                        instanceName = serverName;
-                    }
-                }
-
-                System.Diagnostics.Debug.WriteLine($"UpdatePlayerCounts: serverName={serverName}, directoryPath={directoryPath}, instanceName={instanceName}");
+                string instanceName = await GetOrCacheInstanceName(serverName);
 
                 // Query online players: POK-manager.sh -custom listplayers -{instance_name}
                 try
                 {
                     string listPlayersCommand = $"cd \"{directoryPath}\" && ./POK-manager.sh -custom listplayers -{instanceName} 2>&1";
                     string playersOutput = await _sshService.ExecuteCommandAsync(listPlayersCommand);
-                    
-                    System.Diagnostics.Debug.WriteLine($"ListPlayers output for {instanceName}: {playersOutput}");
                     
                     // Count non-empty lines (each line is a player)
                     int onlinePlayers = 0;
@@ -740,11 +700,9 @@ public class MonitoringService : IDisposable
                     }
                     
                     stats.OnlinePlayers = onlinePlayers;
-                    System.Diagnostics.Debug.WriteLine($"Online players for {instanceName}: {onlinePlayers}");
                 }
                 catch (Exception ex)
                 {
-                    // If command fails, set to 0
                     stats.OnlinePlayers = 0;
                     System.Diagnostics.Debug.WriteLine($"Error querying players for {instanceName}: {ex.Message}");
                 }
@@ -752,12 +710,7 @@ public class MonitoringService : IDisposable
                 // Read MAX_PLAYERS from docker-compose yaml file
                 try
                 {
-                    // Find docker-compose file in Instance_* directory
-                    // Path format: /home/user/asa_server/Cluster_Name_servermappaneve/Instance_servermappaneve/docker-compose-servermappaneve.yaml
                     string dockerComposePath = string.Empty;
-                    
-                    // First try to find any docker-compose file in Instance_* directories
-                    // Simpler approach: find Instance_* directories, then find docker-compose files in them
                     string findComposeCommand = $"find \"{directoryPath}/Instance_{instanceName}\" -maxdepth 1 -name 'docker-compose-*.yaml' -type f 2>/dev/null | head -1";
                     string foundCompose = await _sshService.ExecuteCommandAsync(findComposeCommand);
                     
@@ -788,27 +741,20 @@ public class MonitoringService : IDisposable
                         }
                     }
                     
-                    System.Diagnostics.Debug.WriteLine($"Docker-compose path for {instanceName}: {dockerComposePath}");
-                    
                     // Check if file exists
                     string checkFileCommand = $"test -f \"{dockerComposePath}\" && echo \"exists\" || echo \"notfound\"";
                     string fileCheck = await _sshService.ExecuteCommandAsync(checkFileCommand);
-                    System.Diagnostics.Debug.WriteLine($"File check result: {fileCheck.Trim()}");
                     
                     if (fileCheck.Trim().Contains("exists"))
                     {
                         // Read the entire docker-compose file and search for MAX_PLAYERS
-                        // The format in YAML is: "      - MAX_PLAYERS=30" (with indentation)
                         string readComposeCommand = $"cat \"{dockerComposePath}\" 2>/dev/null";
                         string composeFileContent = await _sshService.ExecuteCommandAsync(readComposeCommand);
                         
-                        System.Diagnostics.Debug.WriteLine($"Docker-compose file content length for {instanceName}: {composeFileContent?.Length ?? 0}");
-                        
-                        // Parse MAX_PLAYERS=30 (can be with or without indentation/spaces)
+                        // Parse MAX_PLAYERS=30
                         int maxPlayers = 0;
                         if (!string.IsNullOrEmpty(composeFileContent))
                         {
-                            // Search for MAX_PLAYERS= followed by digits in the entire file
                             var maxPlayersMatch = Regex.Match(composeFileContent, @"MAX_PLAYERS\s*=\s*(\d+)", RegexOptions.IgnoreCase);
                             if (maxPlayersMatch.Success && maxPlayersMatch.Groups.Count > 1)
                             {
@@ -819,22 +765,15 @@ public class MonitoringService : IDisposable
                             }
                         }
                         
-                        System.Diagnostics.Debug.WriteLine($"Max players for {instanceName}: {maxPlayers}");
-                        
                         // Only update if we found a value, otherwise keep the current value
                         if (maxPlayers > 0)
                         {
                             stats.MaxPlayers = maxPlayers;
                         }
                     }
-                    else
-                    {
-                        System.Diagnostics.Debug.WriteLine($"Docker-compose file not found at: {dockerComposePath}");
-                    }
                 }
                 catch (Exception ex)
                 {
-                    // If file read fails, keep current value
                     System.Diagnostics.Debug.WriteLine($"Error reading MAX_PLAYERS for {instanceName}: {ex.Message}");
                 }
 
@@ -846,6 +785,56 @@ public class MonitoringService : IDisposable
         {
             System.Diagnostics.Debug.WriteLine($"Player count frissítési hiba: {ex.Message}");
         }
+    }
+
+    public void RegisterServer(string serverName, string? directoryPath = null)
+    {
+        _serverStats.TryAdd(serverName, new ServerStats { Status = ServerStatus.Offline });
+        if (!string.IsNullOrEmpty(directoryPath)) 
+        {
+            _serverDirectoryPaths.AddOrUpdate(serverName, directoryPath, (key, oldValue) => directoryPath);
+        }
+    }
+
+    public void UnregisterServer(string serverName)
+    {
+        _serverStats.TryRemove(serverName, out _);
+        _serverDirectoryPaths.TryRemove(serverName, out _);
+        _cachedInstanceNames.TryRemove(serverName, out _);
+    }
+
+    public ServerStats? GetServerStats(string serverName)
+    {
+        _serverStats.TryGetValue(serverName, out var stats);
+        return stats;
+    }
+
+    protected virtual void OnServerStatsUpdated(string serverName, ServerStats stats)
+    {
+        var args = new ServerStatsEventArgs
+        {
+            ServerName = serverName,
+            Status = stats.Status,
+            CpuUsage = stats.CpuUsage,
+            MemoryUsage = stats.MemoryUsage,
+            DiskUsagePercent = stats.DiskUsagePercent,
+            NetworkRxMbps = stats.NetworkRxMbps,
+            NetworkTxMbps = stats.NetworkTxMbps,
+            SystemCpuUsage = stats.SystemCpuUsage,
+            SystemMemoryUsagePercent = stats.SystemMemoryUsagePercent,
+            OnlinePlayers = stats.OnlinePlayers,
+            MaxPlayers = stats.MaxPlayers,
+            GameDay = stats.GameDay,
+            ServerVersion = stats.ServerVersion,
+            ServerPing = stats.ServerPing,
+        };
+
+        ServerStatsUpdated?.Invoke(this, args);
+    }
+
+    protected virtual void OnStatusOutputReceived(string message)
+    {
+        StatusOutputReceived?.Invoke(this, message);
     }
 
     public void Dispose()

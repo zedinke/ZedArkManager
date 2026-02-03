@@ -51,11 +51,11 @@ public class MainViewModel : ViewModelBase
         RemoveServerCommand = new RelayCommand<ServerCardViewModel>(async (vm) => await RemoveServerAsync(vm), () => IsConnected);
         AddSavedServerCommand = new RelayCommandSync(() => AddSavedServer());
         RemoveSavedServerCommand = new RelayCommandSync(() => RemoveSavedServer(), () => SelectedSavedServer != null);
-
         _sshService.OutputReceived += OnSshOutputReceived;
         _sshService.ErrorReceived += OnSshErrorReceived;
         _sshService.ConnectionLost += OnSshConnectionLost;
         _monitoringService.ServerStatsUpdated += OnServerStatsUpdated;
+        _monitoringService.StatusOutputReceived += OnStatusOutputReceived;
 
         ChartViewModel = new ChartViewModel();
 
@@ -276,6 +276,9 @@ public class MainViewModel : ViewModelBase
             {
                 IsConnected = true;
                 AppendToLog(LocalizationHelper.GetString("connected"));
+                
+                // Set connection settings for monitoring service (needed for sudo commands)
+                _monitoringService.SetConnectionSettings(CurrentConnection);
                 
                 // Initialize chart series now that we're connected
                 ChartViewModel.InitializeSeries();
@@ -597,6 +600,11 @@ public class MainViewModel : ViewModelBase
         AppendToLog($"ERROR: {error}");
     }
 
+    private void OnStatusOutputReceived(object? sender, string message)
+    {
+        AppendToLog(message);
+    }
+
     private void OnSshConnectionLost(object? sender, EventArgs e)
     {
         try
@@ -801,4 +809,5 @@ public class MainViewModel : ViewModelBase
             System.Diagnostics.Debug.WriteLine($"Log hozzáadási hiba: {ex.Message}");
         }
     }
+
 }
