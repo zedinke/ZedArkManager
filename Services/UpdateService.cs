@@ -39,6 +39,11 @@ public class UpdateService
             if (versionAttribute != null && !string.IsNullOrEmpty(versionAttribute.InformationalVersion))
             {
                 var version = versionAttribute.InformationalVersion;
+                // Remove git commit hash if present (format: "1.0.2+hash")
+                if (version.Contains('+'))
+                {
+                    version = version.Split('+')[0];
+                }
                 System.Diagnostics.Debug.WriteLine($"GetCurrentVersion: Found AssemblyInformationalVersion: {version}");
                 return version;
             }
@@ -135,16 +140,23 @@ public class UpdateService
             var assets = json["assets"] as JArray;
             var downloadUrl = string.Empty;
 
+            System.Diagnostics.Debug.WriteLine($"GitHub API: Found {assets?.Count ?? 0} assets");
+
             if (assets != null && assets.Count > 0)
             {
                 // Find asset matching the pattern
                 var assetFileName = AssetFileNamePattern.Replace("{version}", version);
+                System.Diagnostics.Debug.WriteLine($"GitHub API: Looking for asset matching pattern: {assetFileName}");
+                
                 foreach (var asset in assets)
                 {
                     var name = asset["name"]?.ToString();
+                    System.Diagnostics.Debug.WriteLine($"GitHub API: Checking asset: {name}");
+                    
                     if (!string.IsNullOrEmpty(name) && name.Contains(version))
                     {
                         downloadUrl = asset["browser_download_url"]?.ToString() ?? string.Empty;
+                        System.Diagnostics.Debug.WriteLine($"GitHub API: Found matching asset: {name}, URL: {downloadUrl}");
                         break;
                     }
                 }
@@ -153,15 +165,24 @@ public class UpdateService
                 if (string.IsNullOrEmpty(downloadUrl) && assets.Count > 0)
                 {
                     downloadUrl = assets[0]["browser_download_url"]?.ToString() ?? string.Empty;
+                    System.Diagnostics.Debug.WriteLine($"GitHub API: Using first asset as fallback: {downloadUrl}");
                 }
             }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("GitHub API: No assets found in release");
+            }
 
-            return new ReleaseInfo
+            var releaseInfo = new ReleaseInfo
             {
                 Version = version,
                 DownloadUrl = downloadUrl,
                 ReleaseNotes = body
             };
+            
+            System.Diagnostics.Debug.WriteLine($"GitHub API: Returning ReleaseInfo - Version: {releaseInfo.Version}, DownloadUrl: {releaseInfo.DownloadUrl}");
+            
+            return releaseInfo;
         }
         catch (Exception ex)
         {
