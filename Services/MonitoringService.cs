@@ -12,7 +12,8 @@ public class MonitoringService : IDisposable
     private CancellationTokenSource? _cancellationTokenSource;
     private bool _isRunning = false;
     private readonly ConcurrentDictionary<string, ServerStats> _serverStats = new();
-    private readonly ConcurrentDictionary<string, string> _serverDirectoryPaths = new(); // ServerName -> DirectoryPath
+    private readonly ConcurrentDictionary<string, string> _serverDirectoryPaths = new();
+    private readonly ConcurrentDictionary<string, int> _cachedPids = new(); // Cache PID-ek container neve alapján // ServerName -> DirectoryPath
 
     public event EventHandler<ServerStatsEventArgs>? ServerStatsUpdated;
 
@@ -498,6 +499,10 @@ public class MonitoringService : IDisposable
     {
         _serverStats.TryRemove(serverName, out _);
         _serverDirectoryPaths.TryRemove(serverName, out _);
+        
+        // Also remove cached PID if we can find the container name
+        // Note: We don't have direct access to container name here, so we'll let it expire naturally
+        // or it will be removed when the container stops
     }
 
     public ServerStats? GetServerStats(string serverName)
