@@ -79,6 +79,12 @@ public partial class App : Application
     {
         try
         {
+            try
+            {
+                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"CheckForUpdatesAndShowLogin: Starting update check\n");
+            }
+            catch { }
+            
             var updateService = new UpdateService();
             var (hasUpdate, isRequired, latestVersion, releaseNotes) = await updateService.CheckForUpdatesAsync();
             
@@ -91,6 +97,12 @@ public partial class App : Application
 
             if (hasUpdate && isRequired)
             {
+                try
+                {
+                    File.AppendAllText("C:\\temp\\zedasa_startup.log", $"Update required! Showing update window\n");
+                }
+                catch { }
+                
                 // Show update window and wait for it
                 var currentVersion = updateService.GetCurrentVersion();
                 var updateWindow = new UpdateWindow(updateService, true, currentVersion, latestVersion ?? "unknown", releaseNotes);
@@ -99,12 +111,20 @@ public partial class App : Application
                 // If update was successful, the app will restart, so we don't need to continue
                 // If update was cancelled or failed, we should still allow the app to start
             }
+            else
+            {
+                try
+                {
+                    File.AppendAllText("C:\\temp\\zedasa_startup.log", $"No update required (hasUpdate={hasUpdate}, isRequired={isRequired})\n");
+                }
+                catch { }
+            }
         }
         catch (Exception updateEx)
         {
             try
             {
-                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"Update check error: {updateEx.Message}\n{updateEx.StackTrace}\n");
+                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"Update check error: {updateEx.Message}\n{updateEx.StackTrace}\nInner: {updateEx.InnerException?.Message}\n");
             }
             catch { }
             // Don't block startup if update check fails
@@ -112,6 +132,11 @@ public partial class App : Application
         finally
         {
             // Show login window after update check (or if it failed)
+            try
+            {
+                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"CheckForUpdatesAndShowLogin: Showing login window\n");
+            }
+            catch { }
             ShowLoginWindow();
         }
     }

@@ -57,22 +57,32 @@ public class UpdateService
         try
         {
             var currentVersion = GetCurrentVersion();
+            System.Diagnostics.Debug.WriteLine($"Current version: {currentVersion}");
+            
             var latestVersionInfo = await GetLatestVersionAsync();
 
             if (latestVersionInfo == null)
             {
+                System.Diagnostics.Debug.WriteLine("No release info found from GitHub");
                 return (false, false, null, null);
             }
 
             var latestVersion = latestVersionInfo.Version;
+            System.Diagnostics.Debug.WriteLine($"Latest version from GitHub: {latestVersion}");
+            
+            var comparison = CompareVersions(latestVersion, currentVersion);
+            System.Diagnostics.Debug.WriteLine($"Version comparison result: {comparison} (1 = latest is newer, 0 = same, -1 = latest is older)");
+            
             var isRequired = IsUpdateRequired(latestVersion, currentVersion);
-            var hasUpdate = CompareVersions(latestVersion, currentVersion) > 0;
+            var hasUpdate = comparison > 0;
+            
+            System.Diagnostics.Debug.WriteLine($"Update check result: hasUpdate={hasUpdate}, isRequired={isRequired}");
 
             return (hasUpdate, isRequired, latestVersion, latestVersionInfo.ReleaseNotes);
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Update check error: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"Update check error: {ex.Message}\n{ex.StackTrace}");
             return (false, false, null, null);
         }
     }
@@ -82,7 +92,11 @@ public class UpdateService
         try
         {
             var url = $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/releases/latest";
+            System.Diagnostics.Debug.WriteLine($"Checking for updates from: {url}");
+            
             var response = await _httpClient.GetStringAsync(url);
+            System.Diagnostics.Debug.WriteLine($"GitHub API response received: {response.Substring(0, Math.Min(200, response.Length))}...");
+            
             var json = JObject.Parse(response);
 
             var tagName = json["tag_name"]?.ToString();
