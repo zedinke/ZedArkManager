@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using ZedASAManager.ViewModels;
+using ZedASAManager.Services;
 
 namespace ZedASAManager.Views;
 
@@ -27,6 +28,9 @@ public partial class LoginWindow : Window
 
             _viewModel.LoginSuccessful += OnLoginSuccessful;
             _viewModel.RegisterSuccessful += OnRegisterSuccessful;
+            
+            // Set version number
+            LoadVersion();
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("shut down") || ex.Message.Contains("Shutdown") || ex.Message.Contains("being shut"))
         {
@@ -138,5 +142,19 @@ public partial class LoginWindow : Window
             "Sikeres regisztráció",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
+    }
+    
+    private void LoadVersion()
+    {
+        try
+        {
+            var updateService = new UpdateService();
+            string version = updateService.GetCurrentVersion();
+            VersionTextBlock.Text = $"Verzió {version}";
+        }
+        catch
+        {
+            VersionTextBlock.Text = "Verzió ismeretlen";
+        }
     }
 }

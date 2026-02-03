@@ -21,12 +21,20 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Column="0" 
-                           Text="ARK ASA Cluster Manager" 
-                           Foreground="White"
-                           FontSize="18"
-                           FontWeight="Bold"
-                           VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="ARK ASA Cluster Manager" 
+                               Foreground="White"
+                               FontSize="18"
+                               FontWeight="Bold"
+                               VerticalAlignment="Center"/>
+                    <TextBlock x:Name="VersionTextBlock"
+                               Text="" 
+                               Foreground="White"
+                               FontSize="12"
+                               VerticalAlignment="Center"
+                               Margin="8,0,0,0"
+                               Opacity="0.8"/>
+                </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                     <TextBlock Text="{Binding CurrentUsername}" 

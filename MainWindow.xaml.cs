@@ -2,6 +2,7 @@
 using System.Windows.Threading;
 using ZedASAManager.ViewModels;
 using ZedASAManager.Utilities;
+using ZedASAManager.Services;
 
 namespace ZedASAManager;
 
@@ -96,6 +97,9 @@ public partial class MainWindow : Window
             // Load localized strings for buttons
             LoadLocalizedStrings();
             
+            // Load version number
+            LoadVersion();
+            
             try
             {
                 System.IO.File.AppendAllText("C:\\temp\\zedasa_startup.log", "MainWindow_Loaded: MainViewModel created successfully\n");
@@ -173,6 +177,20 @@ public partial class MainWindow : Window
         if (ClusterManagementButton != null)
         {
             ClusterManagementButton.Content = LocalizationHelper.GetString("cluster_management");
+        }
+    }
+    
+    private void LoadVersion()
+    {
+        try
+        {
+            var updateService = new UpdateService();
+            string version = updateService.GetCurrentVersion();
+            VersionTextBlock.Text = $"v{version}";
+        }
+        catch
+        {
+            VersionTextBlock.Text = "v?";
         }
     }
 }
