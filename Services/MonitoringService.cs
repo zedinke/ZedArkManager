@@ -106,104 +106,77 @@ public class MonitoringService : IDisposable
     {
         try
         {
-            // Status is now determined by PID (if container has PID, it's running)
+            // Status is determined by PID: each server has its own container with PID
+            // Container name format: asa_{instanceName}
+            // We need to find the instance name for each server and check its container's PID
             if (_serverStats.Count == 0)
                 return;
 
-            // Get list of running containers with their PIDs
-            // Format: docker ps --format "{{.Names}}|{{.ID}}" to get container names and IDs
-            // Then use docker inspect to get PID
-            string command = "docker ps --format \"{{.Names}}\" 2>/dev/null";
-            string output = await _sshService.ExecuteCommandAsync(command);
-            
-            var runningContainers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-            foreach (var line in lines)
-            {
-                string containerName = line.Trim();
-                if (!string.IsNullOrEmpty(containerName))
-                {
-                    runningContainers.Add(containerName);
-                }
-            }
-            
-            System.Diagnostics.Debug.WriteLine($"=== Running Containers Check ===");
-            System.Diagnostics.Debug.WriteLine($"Found {runningContainers.Count} running containers: {string.Join(", ", runningContainers)}");
+            System.Diagnostics.Debug.WriteLine($"=== Server Status Check (PID-based) ===");
 
-            // Update status for all known servers based on container PID/running status
+            // Update status for all known servers based on container PID
             foreach (var serverName in _serverStats.Keys.ToList())
             {
                 var stats = _serverStats[serverName];
-                
-                // Normalize server name for comparison
-                string normalizedServerName = serverName.ToLowerInvariant().Trim();
                 bool isOnline = false;
+                int pid = 0;
                 
-                // Try to find matching container in running containers
-                foreach (var containerName in runningContainers)
+                // Get directory path for this server to find instance name
+                if (!_serverDirectoryPaths.TryGetValue(serverName, out string? directoryPath) || string.IsNullOrEmpty(directoryPath))
                 {
-                    if (!containerName.StartsWith("asa_"))
-                        continue;
-                    
-                    // Extract server name from container (e.g., "asa_Rexodon-center" -> "Rexodon-center")
-                    string extractedServerName = containerName.Substring(4); // Remove "asa_" prefix
-                    string normalizedExtractedName = extractedServerName.ToLowerInvariant().Trim();
-                    
-                    // Try exact match first
-                    if (normalizedExtractedName == normalizedServerName)
-                    {
-                        isOnline = true;
-                        System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is ONLINE (matched container '{containerName}')");
-                        break;
-                    }
-                    
-                    // Try partial matches
-                    if (normalizedExtractedName.Contains(normalizedServerName) || 
-                        normalizedServerName.Contains(normalizedExtractedName))
-                    {
-                        isOnline = true;
-                        System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is ONLINE (partial match with container '{containerName}')");
-                        break;
-                    }
-                    
-                    // Try matching by removing common suffixes
-                    string serverNameBase = normalizedServerName;
-                    string extractedBase = normalizedExtractedName;
-                    string[] suffixes = { "-center", "-server", "-asa", "-ark" };
-                    foreach (var suffix in suffixes)
-                    {
-                        if (serverNameBase.EndsWith(suffix))
-                            serverNameBase = serverNameBase.Substring(0, serverNameBase.Length - suffix.Length);
-                        if (extractedBase.EndsWith(suffix))
-                            extractedBase = extractedBase.Substring(0, extractedBase.Length - suffix.Length);
-                    }
-                    
-                    if (serverNameBase == extractedBase || 
-                        serverNameBase.Contains(extractedBase) || 
-                        extractedBase.Contains(serverNameBase))
-                    {
-                        isOnline = true;
-                        System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is ONLINE (suffix match with container '{containerName}')");
-                        break;
-                    }
-                }
-                
-                // If no match found, check if we can get PID directly for the container
-                if (!isOnline)
-                {
-                    // Try to get PID for container asa_{serverName}
-                    string containerNameToCheck = $"asa_{serverName}";
-                    string pidCommand = $"docker inspect --format '{{{{.State.Pid}}}}' {containerNameToCheck} 2>/dev/null";
+                    // If no directory path, try to use server name directly as instance name
+                    string containerName = $"asa_{serverName}";
+                    string pidCommand = $"docker inspect --format '{{{{.State.Pid}}}}' {containerName} 2>/dev/null";
                     string pidOutput = await _sshService.ExecuteCommandAsync(pidCommand);
                     
-                    if (!string.IsNullOrWhiteSpace(pidOutput) && int.TryParse(pidOutput.Trim(), out int pid) && pid > 0)
+                    if (!string.IsNullOrWhiteSpace(pidOutput) && int.TryParse(pidOutput.Trim(), out pid) && pid > 0)
                     {
                         isOnline = true;
-                        System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is ONLINE (PID={pid})");
+                        System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is ONLINE (container '{containerName}', PID={pid})");
                     }
                     else
                     {
-                        System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is OFFLINE (no PID found)");
+                        System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is OFFLINE (container '{containerName}' not found or no PID)");
+                    }
+                }
+                else
+                {
+                    // Find instance name from Instance_* directory
+                    string instanceName = await GetInstanceNameForServerAsync(serverName, directoryPath);
+                    
+                    if (!string.IsNullOrEmpty(instanceName))
+                    {
+                        // Container name is: asa_{instanceName}
+                        string containerName = $"asa_{instanceName}";
+                        string pidCommand = $"docker inspect --format '{{{{.State.Pid}}}}' {containerName} 2>/dev/null";
+                        string pidOutput = await _sshService.ExecuteCommandAsync(pidCommand);
+                        
+                        if (!string.IsNullOrWhiteSpace(pidOutput) && int.TryParse(pidOutput.Trim(), out pid) && pid > 0)
+                        {
+                            isOnline = true;
+                            System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is ONLINE (instance='{instanceName}', container='{containerName}', PID={pid})");
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is OFFLINE (instance='{instanceName}', container='{containerName}' not found or no PID)");
+                        }
+                    }
+                    else
+                    {
+                        // Fallback: try server name as instance name
+                        string containerName = $"asa_{serverName}";
+                        string pidCommand = $"docker inspect --format '{{{{.State.Pid}}}}' {containerName} 2>/dev/null";
+                        string pidOutput = await _sshService.ExecuteCommandAsync(pidCommand);
+                        
+                        if (!string.IsNullOrWhiteSpace(pidOutput) && int.TryParse(pidOutput.Trim(), out pid) && pid > 0)
+                        {
+                            isOnline = true;
+                            System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is ONLINE (fallback container '{containerName}', PID={pid})");
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Server '{serverName}' is OFFLINE (could not find instance name or container)");
+                        }
                     }
                 }
                 
@@ -218,6 +191,57 @@ public class MonitoringService : IDisposable
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Status frissítési hiba: {ex.Message}");
+        }
+    }
+
+    private async Task<string> GetInstanceNameForServerAsync(string serverName, string directoryPath)
+    {
+        try
+        {
+            // Find Instance_* directories in the server directory
+            // The structure is: /home/user/asa_server/Cluster_Name_servermappaneve/Instance_servermappaneve
+            // We need to find the Instance_* directory and extract the name after Instance_
+            string findInstanceCommand = $"find \"{directoryPath}\" -maxdepth 1 -type d -name 'Instance_*' 2>/dev/null | head -1";
+            string foundInstancePath = await _sshService.ExecuteCommandAsync(findInstanceCommand);
+            
+            if (!string.IsNullOrEmpty(foundInstancePath.Trim()))
+            {
+                // Extract instance name from path like: /path/to/Instance_aberrationteszt
+                string instancePath = foundInstancePath.Trim();
+                int lastSlash = instancePath.LastIndexOf('/');
+                if (lastSlash >= 0 && lastSlash < instancePath.Length - 1)
+                {
+                    string instanceDirName = instancePath.Substring(lastSlash + 1);
+                    if (instanceDirName.StartsWith("Instance_"))
+                    {
+                        string instanceName = instanceDirName.Substring("Instance_".Length);
+                        System.Diagnostics.Debug.WriteLine($"Found instance name '{instanceName}' for server '{serverName}' from path '{instancePath}'");
+                        return instanceName;
+                    }
+                }
+            }
+            
+            // Fallback: if we couldn't find Instance_* directory, try to extract from server name
+            if (serverName.Contains('_'))
+            {
+                string[] parts = serverName.Split('_');
+                if (parts.Length > 1)
+                {
+                    // Take the last part as instance name
+                    string instanceName = parts[parts.Length - 1];
+                    System.Diagnostics.Debug.WriteLine($"Using fallback instance name '{instanceName}' for server '{serverName}' (extracted from server name)");
+                    return instanceName;
+                }
+            }
+            
+            // Last fallback: use server name as instance name
+            System.Diagnostics.Debug.WriteLine($"Using server name '{serverName}' as instance name (last fallback)");
+            return serverName;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error finding instance name for server '{serverName}': {ex.Message}");
+            return serverName; // Fallback to server name
         }
     }
 
