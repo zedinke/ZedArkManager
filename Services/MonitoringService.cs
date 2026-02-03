@@ -135,7 +135,8 @@ public class MonitoringService : IDisposable
                     // Get the actual ArkAscendedServer.exe process PID from the container
                     // docker top shows processes in the container with their HOST PIDs
                     // We need to find the ArkAscendedServer.exe process
-                    string topCommand = $"docker top {containerName} 2>/dev/null | grep -i 'ArkAscendedServer.exe' | head -1 | awk '{{print $2}}'";
+                    // Sort by PID descending and take the first (highest PID = main process)
+                    string topCommand = $"docker top {containerName} 2>/dev/null | grep -i 'ArkAscendedServer.exe' | sort -k2 -rn | head -1 | awk '{{print $2}}'";
                     string pidOutput = await _sshService.ExecuteCommandAsync(topCommand);
                     
                     if (!string.IsNullOrWhiteSpace(pidOutput) && int.TryParse(pidOutput.Trim(), out int pid) && pid > 0)
@@ -146,8 +147,8 @@ public class MonitoringService : IDisposable
                     else
                     {
                         // Fallback: if ArkAscendedServer.exe not found, try to get the main process PID
-                        // This might happen if the process name is slightly different
-                        string fallbackCommand = $"docker top {containerName} 2>/dev/null | grep -v 'PID' | head -1 | awk '{{print $2}}'";
+                        // Sort by PID descending to get the highest PID (main process)
+                        string fallbackCommand = $"docker top {containerName} 2>/dev/null | grep -v 'PID' | sort -k2 -rn | head -1 | awk '{{print $2}}'";
                         string fallbackPidOutput = await _sshService.ExecuteCommandAsync(fallbackCommand);
                         
                         if (!string.IsNullOrWhiteSpace(fallbackPidOutput) && int.TryParse(fallbackPidOutput.Trim(), out int fallbackPid) && fallbackPid > 0)
