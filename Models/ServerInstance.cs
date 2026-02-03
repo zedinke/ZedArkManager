@@ -12,4 +12,5 @@ public class ServerInstance
     public string MapName { get; set; } = string.Empty;
     public int OnlinePlayers { get; set; }
     public int MaxPlayers { get; set; }
+    public int ContainerPid { get; set; }
 }

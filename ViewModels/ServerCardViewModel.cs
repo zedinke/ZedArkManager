@@ -60,6 +60,7 @@ public class ServerCardViewModel : ViewModelBase
     public string MemoryUsage => Model.MemoryUsage;
     public string PortInfo => Model.AsaPort > 0 ? $"{LocalizationHelper.GetString("port_info")}: {Model.AsaPort}" : "";
     public string PlayerInfo => $"{Model.OnlinePlayers}/{Model.MaxPlayers}";
+    public string PidInfo => Model.ContainerPid > 0 ? $"PID: {Model.ContainerPid}" : "PID: -";
 
     public ICommand StartCommand { get; }
     public ICommand StopCommand { get; }
@@ -541,11 +542,13 @@ public class ServerCardViewModel : ViewModelBase
                 Model.MemoryUsage = e.MemoryUsage;
                 Model.OnlinePlayers = e.OnlinePlayers;
                 Model.MaxPlayers = e.MaxPlayers;
+                Model.ContainerPid = e.ContainerPid;
 
                 OnPropertyChanged(nameof(Status));
                 OnPropertyChanged(nameof(CpuUsage));
                 OnPropertyChanged(nameof(MemoryUsage));
                 OnPropertyChanged(nameof(PlayerInfo));
+                OnPropertyChanged(nameof(PidInfo));
             });
         }
     }

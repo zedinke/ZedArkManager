@@ -89,9 +89,13 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <!-- Port Info -->
+                <!-- Port Info and PID -->
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,16">
                     <TextBlock Text="{Binding PortInfo, Mode=OneWay}" 
+                               FontSize="13"
+                               Foreground="#666"
+                               Margin="0,0,16,0"/>
+                    <TextBlock Text="{Binding PidInfo, Mode=OneWay}" 
                                FontSize="13"
                                Foreground="#666"/>
                 </StackPanel>

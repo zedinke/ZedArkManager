@@ -29,6 +29,7 @@ public class MonitoringService : IDisposable
         public double SystemMemoryUsagePercent { get; set; } // Rendszer szintű RAM használat
         public int OnlinePlayers { get; set; }
         public int MaxPlayers { get; set; }
+        public int ContainerPid { get; set; } // Container PID
     }
 
     public class ServerStats
@@ -43,6 +44,7 @@ public class MonitoringService : IDisposable
         public double SystemMemoryUsagePercent { get; set; } // Rendszer szintű RAM használat
         public int OnlinePlayers { get; set; }
         public int MaxPlayers { get; set; }
+        public int ContainerPid { get; set; } // Container PID
     }
 
     public MonitoringService(SshService sshService)
@@ -208,6 +210,14 @@ public class MonitoringService : IDisposable
                 
                 // IMPORTANT: Only set status based on PID check, NOT on memory/CPU stats
                 stats.Status = isOnline ? ServerStatus.Online : ServerStatus.Offline;
+                stats.ContainerPid = pid; // Store PID (0 if offline)
+                
+                // If offline, immediately reset CPU and RAM stats
+                if (!isOnline)
+                {
+                    stats.CpuUsage = 0;
+                    stats.MemoryUsage = string.Empty;
+                }
                 
                 // Always notify to ensure UI is updated
                 OnServerStatsUpdated(serverName, stats);
@@ -574,7 +584,8 @@ public class MonitoringService : IDisposable
             NetworkRxMbps = stats.NetworkRxMbps,
             NetworkTxMbps = stats.NetworkTxMbps,
             OnlinePlayers = stats.OnlinePlayers,
-            MaxPlayers = stats.MaxPlayers
+            MaxPlayers = stats.MaxPlayers,
+            ContainerPid = stats.ContainerPid
         };
 
         ServerStatsUpdated?.Invoke(this, args);
