@@ -1,5 +1,5 @@
 ﻿ZedASAManager
-1.0.8.0
+1.0.24.0
 
 winexe
 C#
@@ -10,11 +10,11 @@ none
 false
 TRACE;RELEASE;NET;NET8_0;NETCOREAPP;WINDOWS;WINDOWS7_0;NET5_0_OR_GREATER;NET6_0_OR_GREATER;NET7_0_OR_GREATER;NET8_0_OR_GREATER;NETCOREAPP3_0_OR_GREATER;NETCOREAPP3_1_OR_GREATER;WINDOWS7_0_OR_GREATER
 C:\Users\gelea\Documents\ZedASAManager\ZedASAManager\App.xaml
-15-1616125354
+19-47208653
 22851919771
-511536069077
+58425737810
 2081400411259
-MainWindow.xaml;Views\AddServerWindow.xaml;Views\ClusterManagementWindow.xaml;Views\ConfigWindow.xaml;Views\ConnectionSettingsWindow.xaml;Views\CreateClusterWindow.xaml;Views\LiveLogsWindow.xaml;Views\LoginWindow.xaml;Views\RegisterWindow.xaml;Views\RenameClusterWindow.xaml;Views\ServerCard.xaml;Views\ServerSettingsWindow.xaml;Views\StopServerWindow.xaml;Views\TermsWindow.xaml;Views\UpdateWindow.xaml;
+MainWindow.xaml;Views\AddServerWindow.xaml;Views\ChangelogWindow.xaml;Views\ClusterManagementWindow.xaml;Views\ConfigTextEditorWindow.xaml;Views\ConfigWindow.xaml;Views\ConnectionSettingsWindow.xaml;Views\CreateClusterWindow.xaml;Views\DockerSetupWindow.xaml;Views\LiveLogsWindow.xaml;Views\LoginWindow.xaml;Views\RegisterWindow.xaml;Views\RenameClusterWindow.xaml;Views\ServerCard.xaml;Views\ServerSettingsWindow.xaml;Views\StopServerWindow.xaml;Views\TermsWindow.xaml;Views\UpdateServerWindow.xaml;Views\UpdateWindow.xaml;
 
 False
 

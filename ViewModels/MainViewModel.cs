@@ -52,6 +52,7 @@ public class MainViewModel : ViewModelBase
         AddSavedServerCommand = new RelayCommandSync(() => AddSavedServer());
         RemoveSavedServerCommand = new RelayCommandSync(() => RemoveSavedServer(), () => SelectedSavedServer != null);
         RefreshCommand = new RelayCommand(async () => await RefreshAsync(), () => IsConnected);
+        OpenChangelogCommand = new RelayCommandSync(() => OpenChangelog());
         _sshService.OutputReceived += OnSshOutputReceived;
         _sshService.ErrorReceived += OnSshErrorReceived;
         _sshService.ConnectionLost += OnSshConnectionLost;
@@ -66,7 +67,7 @@ public class MainViewModel : ViewModelBase
 
     private void LoadUpdateButtonText()
     {
-        UpdateButtonText = Utilities.LocalizationHelper.GetString("update");
+        UpdateButtonText = Utilities.LocalizationHelper.GetString("manager_update");
     }
 
     private async Task CheckForUpdatesAsync()
@@ -157,6 +158,7 @@ public class MainViewModel : ViewModelBase
     public ICommand AddSavedServerCommand { get; }
     public ICommand RemoveSavedServerCommand { get; }
     public ICommand RefreshCommand { get; }
+    public ICommand OpenChangelogCommand { get; }
 
     public string CurrentUsername
     {
@@ -230,6 +232,9 @@ public class MainViewModel : ViewModelBase
                 
                 // Automatikusan betöltjük az új szervert
                 SelectedSavedServer = dialog.SavedServer;
+                
+                // Automatikusan csatlakozunk az új szerverhez
+                _ = ConnectAsync();
             }
         });
     }
@@ -410,12 +415,39 @@ public class MainViewModel : ViewModelBase
         System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
             var settingsWindow = new Views.ConnectionSettingsWindow();
-            var viewModel = new ConnectionSettingsViewModel(_settingsService);
+            var viewModel = new ConnectionSettingsViewModel(_settingsService, _serverDataService, _currentUsername, SavedServers, SelectedSavedServer, false);
             settingsWindow.DataContext = viewModel;
-            settingsWindow.ShowDialog();
+            var result = settingsWindow.ShowDialog();
 
-            // Reload connection settings
-            CurrentConnection = _settingsService.LoadConnectionSettings();
+            if (result == true)
+            {
+                // Frissítjük a SavedServers listát
+                LoadSavedServers();
+                
+                // Ha van kiválasztott szerver, betöltjük a kapcsolatot
+                if (viewModel.SelectedSavedServer != null)
+                {
+                    SelectedSavedServer = viewModel.SelectedSavedServer;
+                    LoadServerConnection(SelectedSavedServer);
+                    
+                    // Ha új szerver lett hozzáadva vagy váltottunk szervert, automatikusan csatlakozunk
+                    if (IsConnected)
+                    {
+                        // Ha már csatlakozva vagyunk, újracsatlakozunk az új adatokkal
+                        _ = Task.Run(async () =>
+                        {
+                            Disconnect();
+                            await Task.Delay(500);
+                            await ConnectAsync();
+                        });
+                    }
+                    else
+                    {
+                        // Ha nincs csatlakozás, csatlakozunk
+                        _ = ConnectAsync();
+                    }
+                }
+            }
         });
     }
 
@@ -431,6 +463,16 @@ public class MainViewModel : ViewModelBase
             var clusterWindow = new Views.ClusterManagementWindow(_sshService, CurrentConnection?.Username ?? string.Empty, IsConnected, basePath);
             clusterWindow.Owner = System.Windows.Application.Current.MainWindow;
             clusterWindow.ShowDialog();
+        });
+    }
+
+    private void OpenChangelog()
+    {
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+        {
+            var changelogWindow = new Views.ChangelogWindow();
+            changelogWindow.Owner = System.Windows.Application.Current.MainWindow;
+            changelogWindow.ShowDialog();
         });
     }
 

@@ -118,44 +118,56 @@
                 <!-- Action Buttons -->
                 <StackPanel Grid.Row="2" Margin="0,0,0,8">
                     <UniformGrid Columns="2" Rows="2" Margin="0,0,0,4">
-                        <Button Content="Indítás" 
+                        <Button x:Name="StartButton"
                                 Command="{Binding StartCommand}"
                                 Margin="4"
                                 Height="36"
                                 FontSize="12"
                                 Padding="12,6"
-                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBooleanConverter}}"/>
-                        <Button Content="Leállítás" 
+                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBooleanConverter}}"
+                                Loaded="StartButton_Loaded"/>
+                        <Button x:Name="StopButton"
                                 Command="{Binding StopCommand}"
                                 Margin="4"
                                 Height="36"
                                 FontSize="12"
                                 Padding="12,6"
-                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBooleanConverter}}"/>
-                        <Button Content="Újraindítás" 
+                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBooleanConverter}}"
+                                Loaded="StopButton_Loaded"/>
+                        <Button x:Name="RestartButton"
                                 Command="{Binding RestartCommand}"
                                 Margin="4"
                                 Height="36"
                                 FontSize="12"
                                 Padding="12,6"
-                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBooleanConverter}}"/>
-                        <Button Content="Frissítés" 
+                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBooleanConverter}}"
+                                Loaded="RestartButton_Loaded"/>
+                        <Button x:Name="UpdateButton"
                                 Command="{Binding UpdateCommand}"
                                 Margin="4"
                                 Height="36"
                                 FontSize="12"
                                 Padding="12,6"
-                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBooleanConverter}}"/>
+                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBooleanConverter}}"
+                                Loaded="UpdateButton_Loaded"/>
                     </UniformGrid>
-                    <UniformGrid Columns="3" Margin="4">
-                        <Button Content="Konfiguráció" 
+                    <UniformGrid Columns="4" Margin="4">
+                        <Button x:Name="ConfigButton"
                                 Command="{Binding ConfigCommand}"
                                 Margin="2"
                                 Height="36"
                                 FontSize="12"
-                                Padding="12,6"/>
-                        <Button Content="Élő adatok" 
+                                Padding="12,6"
+                                Loaded="ConfigButton_Loaded"/>
+                        <Button x:Name="LiveLogsButton"
                                 Command="{Binding OpenLiveLogsCommand}"
+                                Margin="2"
+                                Height="36"
+                                FontSize="12"
+                                Padding="12,6"
+                                Loaded="LiveLogsButton_Loaded"/>
+                        <Button Content="Docker Setup" 
+                                Command="{Binding DockerSetupCommand}"
                                 Margin="2"
                                 Height="36"
                                 FontSize="12"
@@ -178,12 +190,13 @@
                     BorderThickness="0,1,0,0"
                     Background="#FAFAFA"
                     Padding="8">
-                <Button Content="Törlés" 
+                <Button x:Name="DeleteButton"
                         Command="{Binding DataContext.RemoveServerCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                         CommandParameter="{Binding}"
                         Background="#D32F2F"
                         Foreground="White"
                         BorderThickness="0"
+                        Loaded="DeleteButton_Loaded"
                         Padding="12,6"
                         FontSize="12"
                         Cursor="Hand">

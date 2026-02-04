@@ -23,10 +23,11 @@ public class ServerCardViewModel : ViewModelBase
         StartCommand = new RelayCommand(async () => await ExecuteActionAsync("start"), () => !IsBusy);
         StopCommand = new RelayCommand(async () => await ExecuteStopAsync(), () => !IsBusy);
         RestartCommand = new RelayCommand(async () => await ExecuteActionAsync("restart"), () => !IsBusy);
-        UpdateCommand = new RelayCommand(async () => await ExecuteActionAsync("update"), () => !IsBusy);
+        UpdateCommand = new RelayCommand(async () => await ExecuteUpdateAsync(), () => !IsBusy);
         ShutdownCommand = new RelayCommand(async () => await ExecuteShutdownAsync(), () => !IsBusy);
         ConfigCommand = new RelayCommandSync(() => OpenConfigWindow());
         OpenLiveLogsCommand = new RelayCommandSync(() => OpenLiveLogsWindow());
+        DockerSetupCommand = new RelayCommand(async () => await OpenDockerSetupWindowAsync());
 
         _monitoringService.ServerStatsUpdated += OnServerStatsUpdated;
         _monitoringService.RegisterServer(model.Name, model.DirectoryPath);
@@ -71,6 +72,7 @@ public class ServerCardViewModel : ViewModelBase
     public ICommand ShutdownCommand { get; }
     public ICommand ConfigCommand { get; }
     public ICommand OpenLiveLogsCommand { get; }
+    public ICommand DockerSetupCommand { get; }
 
     private async Task<string> GetInstanceNameAsync()
     {
@@ -135,11 +137,22 @@ public class ServerCardViewModel : ViewModelBase
         // Show confirmation dialog for start action
         if (action == "start")
         {
+            // Check for xaudio2_9.dll file before starting
+            var xAudioService = new XAudioFileService(_sshService);
+            bool fileExists = await xAudioService.CheckFileExistsAsync(Model.DirectoryPath);
+            
             string pokManagerPath = $"{Model.DirectoryPath}/POK-manager.sh";
             string fullCommand = $"cd {Model.DirectoryPath} && ./POK-manager.sh -start {instanceName}";
             string message = $"{LocalizationHelper.GetString("start_server_confirm")}\n\n" +
                            $"{LocalizationHelper.GetString("pok_manager_path")}: {pokManagerPath}\n\n" +
                            $"Parancs: {fullCommand}";
+            
+            if (!fileExists)
+            {
+                message += "\n\n⚠ WARNING: xaudio2_9.dll file is missing from the server directory.\n" +
+                           "Missing this file may cause continuous server restarts.\n" +
+                           "The file will be automatically downloaded before starting the server.";
+            }
             
             var result = System.Windows.MessageBox.Show(
                 message,
@@ -150,6 +163,43 @@ public class ServerCardViewModel : ViewModelBase
             if (result != System.Windows.MessageBoxResult.Yes)
             {
                 return;
+            }
+
+            // Download file if missing
+            if (!fileExists)
+            {
+                IsBusy = true;
+                Model.Status = ServerStatus.Busy;
+                OnPropertyChanged(nameof(Status));
+                
+                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                {
+                    System.Windows.MessageBox.Show(
+                        "Downloading xaudio2_9.dll file. Please wait...",
+                        "Downloading",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Information);
+                });
+
+                bool downloadSuccess = await xAudioService.DownloadAndCopyFileAsync(Model.DirectoryPath);
+                
+                if (!downloadSuccess)
+                {
+                    System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        System.Windows.MessageBox.Show(
+                            "Failed to download xaudio2_9.dll file. The server may not start correctly.\n" +
+                            "Please check your internet connection and try again.",
+                            "Download Failed",
+                            System.Windows.MessageBoxButton.OK,
+                            System.Windows.MessageBoxImage.Warning);
+                    });
+                    
+                    IsBusy = false;
+                    Model.Status = ServerStatus.Offline;
+                    OnPropertyChanged(nameof(Status));
+                    return;
+                }
             }
         }
 
@@ -501,6 +551,68 @@ public class ServerCardViewModel : ViewModelBase
         }
     }
 
+    private async Task ExecuteUpdateAsync()
+    {
+        if (IsBusy || !_sshService.IsConnected)
+            return;
+
+        // Get instance name
+        string instanceName = await GetInstanceNameAsync();
+
+        // Show confirmation dialog
+        string message = $"Are you sure you want to update the server '{instanceName}'?\n\n" +
+                        "This will:\n" +
+                        "1. Stop the server\n" +
+                        "2. Wait 15 seconds\n" +
+                        "3. Run the update command (you can watch the live output)\n" +
+                        "4. Wait 10 minutes\n" +
+                        "5. Start the server again\n\n" +
+                        "Do you want to continue?";
+
+        var result = System.Windows.MessageBox.Show(
+            message,
+            "Server Update",
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Question);
+
+        if (result != System.Windows.MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        Model.Status = ServerStatus.Busy;
+        OnPropertyChanged(nameof(Status));
+
+        try
+        {
+            // Open update window with live output
+            var updateWindow = new Views.UpdateServerWindow(_sshService, Model.DirectoryPath, instanceName);
+            updateWindow.Owner = System.Windows.Application.Current.MainWindow;
+            updateWindow.Show();
+
+            // Start update process
+            await updateWindow.StartUpdateAsync(_connectionSettings);
+
+            // Wait for update to complete (window will show progress)
+            // The window can be closed by user, but update will continue in background
+        }
+        catch (Exception ex)
+        {
+            LogHelper.WriteToServerCardLog($"Error executing update: {ex.Message}");
+            System.Windows.MessageBox.Show(
+                $"Error executing update: {ex.Message}",
+                "Error",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsBusy = false;
+            OnPropertyChanged(nameof(Status));
+        }
+    }
+
     private void OnServerStatsUpdated(object? sender, MonitoringService.ServerStatsEventArgs e)
     {
         // Use EXACT case-insensitive matching to avoid mismatches
@@ -544,12 +656,12 @@ public class ServerCardViewModel : ViewModelBase
     {
         try
         {
-            System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"=== OpenConfigWindow called ===\n");
-            System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"SSH Service is null: {_sshService == null}\n");
+            LogHelper.WriteToConfigLog("=== OpenConfigWindow called ===");
+            LogHelper.WriteToConfigLog($"SSH Service is null: {_sshService == null}");
             
             if (!_sshService.IsConnected)
             {
-                System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"SSH Service is not connected\n");
+                LogHelper.WriteToConfigLog("SSH Service is not connected");
                 System.Windows.MessageBox.Show(
                     "Nincs aktív SSH kapcsolat!",
                     "Hiba",
@@ -558,33 +670,29 @@ public class ServerCardViewModel : ViewModelBase
                 return;
             }
 
-            System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"SSH Service is connected, creating ConfigService\n");
+            LogHelper.WriteToConfigLog("SSH Service is connected, creating ConfigService");
             string basePath = _connectionSettings?.ServerBasePath ?? string.Empty;
             if (string.IsNullOrEmpty(basePath) && !string.IsNullOrEmpty(_connectionSettings?.Username))
             {
                 basePath = $"/home/{_connectionSettings.Username}/asa_server";
             }
             var configService = new Services.ConfigService(_sshService, basePath);
-            System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ConfigService created, ServerName={_model.Name}, BasePath={basePath}\n");
+            LogHelper.WriteToConfigLog($"ConfigService created, ServerName={_model.Name}, BasePath={basePath}");
             
-            System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"Creating ConfigViewModel\n");
+            LogHelper.WriteToConfigLog("Creating ConfigViewModel");
             var configViewModel = new ConfigViewModel(configService, _model, _sshService);
-            System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ConfigViewModel created successfully\n");
+            LogHelper.WriteToConfigLog("ConfigViewModel created successfully");
             
-            System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"Creating ConfigWindow\n");
+            LogHelper.WriteToConfigLog("Creating ConfigWindow");
             var configWindow = new Views.ConfigWindow(configViewModel);
-            System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ConfigWindow created successfully, about to show dialog\n");
+            LogHelper.WriteToConfigLog("ConfigWindow created successfully, about to show dialog");
             
             configWindow.ShowDialog();
-            System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ConfigWindow dialog closed\n");
+            LogHelper.WriteToConfigLog("ConfigWindow dialog closed");
         }
         catch (Exception ex)
         {
-            try
-            {
-                System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"OpenConfigWindow ERROR: {ex.Message}\n{ex.StackTrace}\nInner: {ex.InnerException?.Message}\n");
-            }
-            catch { }
+            LogHelper.WriteToConfigLog($"OpenConfigWindow ERROR: {ex.Message}\n{ex.StackTrace}\nInner: {ex.InnerException?.Message}");
             
             System.Windows.MessageBox.Show(
                 $"Konfiguráció ablak megnyitási hiba:\n\n{ex.Message}\n\n{ex.StackTrace}\n\nInner: {ex.InnerException?.Message}",
@@ -632,6 +740,50 @@ public class ServerCardViewModel : ViewModelBase
         {
             System.Windows.MessageBox.Show(
                 $"Hiba az élő logok megnyitásakor:\n\n{ex.Message}",
+                LocalizationHelper.GetString("error"),
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Error);
+        }
+    }
+
+    private async Task OpenDockerSetupWindowAsync()
+    {
+        try
+        {
+            if (!_sshService.IsConnected)
+            {
+                System.Windows.MessageBox.Show(
+                    LocalizationHelper.GetString("disconnected"),
+                    LocalizationHelper.GetString("error"),
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
+            // Get instance name
+            string instanceName = await GetInstanceNameAsync();
+            
+            if (string.IsNullOrEmpty(instanceName))
+            {
+                System.Windows.MessageBox.Show(
+                    "Could not determine instance name for Docker setup.",
+                    LocalizationHelper.GetString("error"),
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                var dockerSetupWindow = new Views.DockerSetupWindow(_sshService, _model.DirectoryPath, instanceName);
+                dockerSetupWindow.Owner = System.Windows.Application.Current.MainWindow;
+                dockerSetupWindow.ShowDialog();
+            });
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show(
+                $"Error opening Docker setup window:\n\n{ex.Message}",
                 LocalizationHelper.GetString("error"),
                 System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Error);

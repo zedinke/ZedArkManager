@@ -92,21 +92,13 @@ public class UpdateService
             if (latestVersionInfo == null)
             {
                 System.Diagnostics.Debug.WriteLine("No release info found from GitHub");
-                try
-                {
-                    File.AppendAllText("C:\\temp\\zedasa_startup.log", $"CheckForUpdatesAsync: latestVersionInfo is null - GitHub API call failed or returned no data\n");
-                }
-                catch { }
+                LogHelper.WriteToStartupLog("CheckForUpdatesAsync: latestVersionInfo is null - GitHub API call failed or returned no data");
                 return (false, false, null, null);
             }
 
             var latestVersion = latestVersionInfo.Version;
             System.Diagnostics.Debug.WriteLine($"Latest version from GitHub: {latestVersion}");
-            try
-            {
-                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"CheckForUpdatesAsync: latestVersion={latestVersion}, downloadUrl={latestVersionInfo.DownloadUrl}\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog($"CheckForUpdatesAsync: latestVersion={latestVersion}, downloadUrl={latestVersionInfo.DownloadUrl}");
             
             var comparison = CompareVersions(latestVersion, currentVersion);
             System.Diagnostics.Debug.WriteLine($"Version comparison result: {comparison} (1 = latest is newer, 0 = same, -1 = latest is older)");
@@ -211,11 +203,7 @@ public class UpdateService
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Error fetching latest version: {ex.Message}\n{ex.StackTrace}");
-            try
-            {
-                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"GitHub API Error: {ex.Message}\n{ex.StackTrace}\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog($"GitHub API Error: {ex.Message}\n{ex.StackTrace}");
             return null;
         }
     }
@@ -372,10 +360,60 @@ del ""{scriptPath}""
         }
     }
 
-    private class ReleaseInfo
+    public async Task<List<ReleaseInfo>> GetAllReleasesAsync()
+    {
+        try
+        {
+            var url = $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/releases";
+            System.Diagnostics.Debug.WriteLine($"Fetching all releases from: {url}");
+            
+            var responseBytes = await _httpClient.GetByteArrayAsync(url);
+            var response = System.Text.Encoding.UTF8.GetString(responseBytes);
+            var jsonArray = JArray.Parse(response);
+            
+            var releases = new List<ReleaseInfo>();
+            
+            foreach (var releaseJson in jsonArray)
+            {
+                var tagName = releaseJson["tag_name"]?.ToString();
+                if (string.IsNullOrEmpty(tagName))
+                    continue;
+                
+                // Remove 'v' prefix if present
+                var version = tagName.StartsWith("v") ? tagName.Substring(1) : tagName;
+                var body = releaseJson["body"]?.ToString() ?? string.Empty;
+                var publishedAt = releaseJson["published_at"]?.ToString() ?? string.Empty;
+                
+                // Clean up the release notes - remove any problematic characters
+                body = System.Text.RegularExpressions.Regex.Replace(body, @"[\u0000-\u001F]", string.Empty);
+                
+                var releaseInfo = new ReleaseInfo
+                {
+                    Version = version,
+                    ReleaseNotes = body,
+                    PublishedAt = publishedAt
+                };
+                
+                releases.Add(releaseInfo);
+            }
+            
+            // Sort by version (newest first)
+            releases.Sort((a, b) => -CompareVersions(a.Version, b.Version));
+            
+            return releases;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error fetching all releases: {ex.Message}\n{ex.StackTrace}");
+            return new List<ReleaseInfo>();
+        }
+    }
+
+    public class ReleaseInfo
     {
         public string Version { get; set; } = string.Empty;
         public string DownloadUrl { get; set; } = string.Empty;
         public string ReleaseNotes { get; set; } = string.Empty;
+        public string PublishedAt { get; set; } = string.Empty;
     }
 }

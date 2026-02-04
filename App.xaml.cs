@@ -1,8 +1,9 @@
-﻿using System.IO;
+using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using ZedASAManager.Services;
 using ZedASAManager.Views;
+using ZedASAManager.Utilities;
 
 namespace ZedASAManager;
 
@@ -20,11 +21,7 @@ public partial class App : Application
         // Prevent multiple calls
         if (_startupHandled)
         {
-            try
-            {
-                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"App_Startup already handled, skipping\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog("App_Startup already handled, skipping");
             return;
         }
         
@@ -32,11 +29,7 @@ public partial class App : Application
         
         try
         {
-            try
-            {
-                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"App_Startup called\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog("App_Startup called");
             
             // Global exception handling
             this.DispatcherUnhandledException += App_DispatcherUnhandledException;
@@ -52,7 +45,7 @@ public partial class App : Application
             };
             this.MainWindow = mainWindow;
             
-            File.AppendAllText("C:\\temp\\zedasa_startup.log", $"MainWindow created (hidden) to prevent app shutdown\n");
+            LogHelper.WriteToStartupLog("MainWindow created (hidden) to prevent app shutdown");
 
             // Check for updates before showing login window
             // Use Dispatcher.BeginInvoke to ensure we're on the UI thread
@@ -64,11 +57,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            try
-            {
-                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"ERROR: {ex.Message}\n{ex.StackTrace}\nInner: {ex.InnerException?.Message}\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog($"ERROR: {ex.Message}\n{ex.StackTrace}\nInner: {ex.InnerException?.Message}");
             
             MessageBox.Show(
                 $"Alkalmazás indítási hiba:\n\n{ex.Message}\n\n{ex.StackTrace}\n\nInner: {ex.InnerException?.Message}",
@@ -83,32 +72,19 @@ public partial class App : Application
     {
         try
         {
-            try
-            {
-                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"CheckForUpdatesAndShowLoginAsync: Starting update check\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog("CheckForUpdatesAndShowLoginAsync: Starting update check");
             
             var updateService = new UpdateService();
+            var currentVersion = updateService.GetCurrentVersion();
             var (hasUpdate, isRequired, latestVersion, releaseNotes) = await updateService.CheckForUpdatesAsync();
             
-            try
-            {
-                var currentVersion = updateService.GetCurrentVersion();
-                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"Update check result: currentVersion={currentVersion}, hasUpdate={hasUpdate}, isRequired={isRequired}, latestVersion={latestVersion}\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog($"Update check result: currentVersion={currentVersion}, hasUpdate={hasUpdate}, isRequired={isRequired}, latestVersion={latestVersion}");
 
             if (hasUpdate && isRequired)
             {
-                try
-                {
-                    File.AppendAllText("C:\\temp\\zedasa_startup.log", $"Update required! Showing update window\n");
-                }
-                catch { }
+                LogHelper.WriteToStartupLog("Update required! Showing update window");
                 
                 // Show update window and wait for it
-                var currentVersion = updateService.GetCurrentVersion();
                 var updateWindow = new UpdateWindow(updateService, true, currentVersion, latestVersion ?? "unknown", releaseNotes);
                 updateWindow.ShowDialog();
                 
@@ -117,31 +93,19 @@ public partial class App : Application
             }
             else
             {
-                try
-                {
-                    File.AppendAllText("C:\\temp\\zedasa_startup.log", $"No update required (hasUpdate={hasUpdate}, isRequired={isRequired})\n");
-                }
-                catch { }
+                LogHelper.WriteToStartupLog($"No update required (hasUpdate={hasUpdate}, isRequired={isRequired})");
             }
         }
         catch (Exception updateEx)
         {
-            try
-            {
-                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"Update check error: {updateEx.Message}\n{updateEx.StackTrace}\nInner: {updateEx.InnerException?.Message}\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog($"Update check error: {updateEx.Message}\n{updateEx.StackTrace}\nInner: {updateEx.InnerException?.Message}");
             // Don't block startup if update check fails
         }
         finally
         {
             // Show login window after update check (or if it failed)
             // Use Dispatcher to ensure we're on the UI thread
-            try
-            {
-                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"CheckForUpdatesAndShowLoginAsync: Showing login window\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog("CheckForUpdatesAndShowLoginAsync: Showing login window");
             
             // Ensure we're on the UI thread and app is still running before showing the login window
             if (Application.Current != null && Application.Current.Dispatcher != null)
@@ -154,11 +118,7 @@ public partial class App : Application
                     }
                     else
                     {
-                        try
-                        {
-                            File.AppendAllText("C:\\temp\\zedasa_startup.log", $"CheckForUpdatesAndShowLoginAsync: Application is shutting down, cannot show login window\n");
-                        }
-                        catch { }
+                        LogHelper.WriteToStartupLog("CheckForUpdatesAndShowLoginAsync: Application is shutting down, cannot show login window");
                     }
                 });
             }
@@ -174,21 +134,13 @@ public partial class App : Application
         // If MainWindow already exists and is visible, don't show login again
         if (MainWindow != null && MainWindow.IsVisible)
         {
-            try
-            {
-                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"ShowLoginWindow: MainWindow already exists and visible, skipping\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog("ShowLoginWindow: MainWindow already exists and visible, skipping");
             return;
         }
         
-        try
-        {
             try
             {
-                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"ShowLoginWindow: Creating login window\n");
-            }
-            catch { }
+                LogHelper.WriteToStartupLog("ShowLoginWindow: Creating login window");
             
             var loginWindow = new Views.LoginWindow();
             
@@ -206,11 +158,7 @@ public partial class App : Application
             // Store username before checking
             string? loggedInUsername = loginWindow.LoggedInUsername;
             
-            try
-            {
-                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"After ShowDialog: loginResult={loginResult}, LoggedInUsername={loggedInUsername}\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog($"After ShowDialog: loginResult={loginResult}, LoggedInUsername={loggedInUsername}");
             
             // Check login result
             if ((loginResult == true || !string.IsNullOrEmpty(loggedInUsername)) && !string.IsNullOrEmpty(loggedInUsername))
@@ -218,13 +166,13 @@ public partial class App : Application
                 // Login successful - configure and show existing MainWindow
                 try
                 {
-                    File.AppendAllText("C:\\temp\\zedasa_startup.log", $"Configuring MainWindow for user: {loggedInUsername}\n");
+                    LogHelper.WriteToStartupLog($"Configuring MainWindow for user: {loggedInUsername}");
                     
                     // Get existing MainWindow (created in App_Startup)
                     var mainWindow = this.MainWindow;
                     if (mainWindow == null)
                     {
-                        File.AppendAllText("C:\\temp\\zedasa_startup.log", "ERROR: MainWindow is null!\n");
+                        LogHelper.WriteToStartupLog("ERROR: MainWindow is null!");
                         throw new InvalidOperationException("MainWindow is null");
                     }
                     
@@ -246,15 +194,11 @@ public partial class App : Application
                     mainWindow.Focus();
                     mainWindow.BringIntoView();
                     
-                    File.AppendAllText("C:\\temp\\zedasa_startup.log", $"MainWindow shown, IsVisible={mainWindow.IsVisible}, Visibility={mainWindow.Visibility}\n");
+                    LogHelper.WriteToStartupLog($"MainWindow shown, IsVisible={mainWindow.IsVisible}, Visibility={mainWindow.Visibility}");
                 }
                 catch (Exception mainEx)
                 {
-                    try
-                    {
-                        File.AppendAllText("C:\\temp\\zedasa_startup.log", $"MAIN WINDOW ERROR: {mainEx.Message}\n{mainEx.StackTrace}\n");
-                    }
-                    catch { }
+                    LogHelper.WriteToStartupLog($"MAIN WINDOW ERROR: {mainEx.Message}\n{mainEx.StackTrace}");
                     
                     MessageBox.Show(
                         $"Főoldal betöltési hiba:\n\n{mainEx.Message}",
@@ -266,11 +210,7 @@ public partial class App : Application
             }
             else
             {
-                try
-                {
-                    File.AppendAllText("C:\\temp\\zedasa_startup.log", $"Login cancelled or failed, shutting down\n");
-                }
-                catch { }
+                LogHelper.WriteToStartupLog("Login cancelled or failed, shutting down");
                 
                 // Login cancelled or failed, exit application
                 Shutdown();
@@ -278,11 +218,7 @@ public partial class App : Application
         }
         catch (Exception loginEx)
         {
-            try
-            {
-                File.AppendAllText("C:\\temp\\zedasa_startup.log", $"LOGIN ERROR: {loginEx.Message}\n{loginEx.StackTrace}\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog($"LOGIN ERROR: {loginEx.Message}\n{loginEx.StackTrace}");
             
             MessageBox.Show(
                 $"Login ablak hiba:\n\n{loginEx.Message}",

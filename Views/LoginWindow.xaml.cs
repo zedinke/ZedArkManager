@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using ZedASAManager.ViewModels;
 using ZedASAManager.Services;
+using ZedASAManager.Utilities;
 
 namespace ZedASAManager.Views;
 
@@ -36,20 +37,12 @@ public partial class LoginWindow : Window
         {
             // Application is shutting down, don't show error
             System.Diagnostics.Debug.WriteLine($"LoginWindow: Application shutting down: {ex.Message}");
-            try
-            {
-                System.IO.File.AppendAllText("C:\\temp\\zedasa_startup.log", $"LoginWindow: Application shutting down exception caught: {ex.Message}\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog($"LoginWindow: Application shutting down exception caught: {ex.Message}");
             return;
         }
         catch (Exception ex)
         {
-            try
-            {
-                System.IO.File.AppendAllText("C:\\temp\\zedasa_startup.log", $"LoginWindow: Exception in constructor: {ex.Message}\n{ex.StackTrace}\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog($"LoginWindow: Exception in constructor: {ex.Message}\n{ex.StackTrace}");
             
             MessageBox.Show(
                 $"LoginWindow inicializálási hiba:\n\n{ex.Message}\n\n{ex.StackTrace}",

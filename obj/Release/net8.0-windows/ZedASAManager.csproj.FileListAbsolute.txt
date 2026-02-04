@@ -64,3 +64,12 @@ C:\Users\gelea\Documents\ZedASAManager\ZedASAManager\obj\Release\net8.0-windows\
 C:\Users\gelea\Documents\ZedASAManager\ZedASAManager\obj\Release\net8.0-windows\Views\UpdateWindow.baml
 C:\Users\gelea\Documents\ZedASAManager\ZedASAManager\obj\Release\net8.0-windows\Views\UpdateWindow.g.cs
 C:\Users\gelea\Documents\ZedASAManager\ZedASAManager\obj\Release\net8.0-windows\ZedASAManager.sourcelink.json
+C:\Users\gelea\Documents\ZedASAManager\ZedASAManager\obj\Release\net8.0-windows\Views\ChangelogWindow.baml
+C:\Users\gelea\Documents\ZedASAManager\ZedASAManager\obj\Release\net8.0-windows\Views\ChangelogWindow.g.cs
+C:\Users\gelea\Documents\ZedASAManager\ZedASAManager\bin\Release\net8.0-windows\Files\xaudio2_9.dll
+C:\Users\gelea\Documents\ZedASAManager\ZedASAManager\obj\Release\net8.0-windows\Views\UpdateServerWindow.baml
+C:\Users\gelea\Documents\ZedASAManager\ZedASAManager\obj\Release\net8.0-windows\Views\UpdateServerWindow.g.cs
+C:\Users\gelea\Documents\ZedASAManager\ZedASAManager\obj\Release\net8.0-windows\Views\DockerSetupWindow.baml
+C:\Users\gelea\Documents\ZedASAManager\ZedASAManager\obj\Release\net8.0-windows\Views\DockerSetupWindow.g.cs
+C:\Users\gelea\Documents\ZedASAManager\ZedASAManager\obj\Release\net8.0-windows\Views\ConfigTextEditorWindow.baml
+C:\Users\gelea\Documents\ZedASAManager\ZedASAManager\obj\Release\net8.0-windows\Views\ConfigTextEditorWindow.g.cs

@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         x:Name="AddServerWindowControl"
-        Height="800" Width="600"
+        Height="1000" Width="750"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize">
     <Grid Margin="16">
@@ -115,10 +115,16 @@
 
                 <TextBlock x:Name="MapNameLabel" 
                            Margin="0,0,0,8"/>
-                <TextBox x:Name="MapNameTextBox"
-                         Text="Aberration"
+                <ComboBox x:Name="MapNameComboBox"
+                         Margin="0,0,0,8"
+                         Padding="8"
+                         DisplayMemberPath="DisplayName"
+                         SelectionChanged="MapNameComboBox_SelectionChanged"/>
+                <TextBox x:Name="CustomMapNameTextBox"
+                         Visibility="Collapsed"
                          Margin="0,0,0,16"
-                         Padding="8"/>
+                         Padding="8"
+                         Text=""/>
 
                 <TextBlock x:Name="SessionNameLabel" 
                            Margin="0,0,0,8"/>

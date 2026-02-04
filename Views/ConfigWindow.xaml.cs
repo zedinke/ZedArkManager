@@ -1,6 +1,7 @@
 using System.Windows;
 using ZedASAManager.ViewModels;
 using System.IO;
+using ZedASAManager.Utilities;
 
 namespace ZedASAManager.Views;
 
@@ -10,31 +11,54 @@ public partial class ConfigWindow : Window
     {
         try
         {
-            File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ConfigWindow constructor started\n");
-            File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ConfigWindow: ViewModel is null: {viewModel == null}\n");
+            LogHelper.WriteToConfigLog("ConfigWindow constructor started");
+            LogHelper.WriteToConfigLog($"ConfigWindow: ViewModel is null: {viewModel == null}");
             
             if (viewModel != null)
             {
-                File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ConfigWindow: ServerName={viewModel.ServerName}\n");
+                LogHelper.WriteToConfigLog($"ConfigWindow: ServerName={viewModel.ServerName}");
             }
             
-            File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ConfigWindow: About to call InitializeComponent()\n");
+            LogHelper.WriteToConfigLog("ConfigWindow: About to call InitializeComponent()");
             InitializeComponent();
-            File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ConfigWindow: InitializeComponent() completed\n");
+            LogHelper.WriteToConfigLog("ConfigWindow: InitializeComponent() completed");
             
-            File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ConfigWindow: About to set DataContext\n");
+            LogHelper.WriteToConfigLog("ConfigWindow: About to set DataContext");
             DataContext = viewModel;
-            File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ConfigWindow: DataContext set successfully\n");
+            LogHelper.WriteToConfigLog("ConfigWindow: DataContext set successfully");
             
-            File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ConfigWindow constructor completed successfully\n");
+            // Automatikusan betöltjük a konfigurációt amikor az ablak megnyílik
+            // De csak akkor, ha még nincs betöltve
+            this.Loaded += async (s, e) =>
+            {
+                try
+                {
+                    LogHelper.WriteToConfigLog("ConfigWindow: Loaded event fired");
+                    // Csak akkor töltjük be automatikusan, ha még nincs betöltve
+                    if (viewModel.GameIni == null && viewModel.GameUserSettingsIni == null)
+                    {
+                        LogHelper.WriteToConfigLog("ConfigWindow: No config loaded yet, loading automatically");
+                        await viewModel.LoadConfigAsync();
+                        LogHelper.WriteToConfigLog("ConfigWindow: Config files loaded successfully");
+                    }
+                    else
+                    {
+                        LogHelper.WriteToConfigLog("ConfigWindow: Config already loaded, skipping auto-load");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogHelper.WriteToConfigLog($"ConfigWindow: Error loading config files: {ex.Message}\n{ex.StackTrace}");
+                    // Ne tiltsuk le a gombot, ha az automatikus betöltés sikertelen
+                    viewModel.IsLoading = false;
+                }
+            };
+            
+            LogHelper.WriteToConfigLog("ConfigWindow constructor completed successfully");
         }
         catch (Exception ex)
         {
-            try
-            {
-                File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ConfigWindow constructor ERROR: {ex.Message}\n{ex.StackTrace}\nInner: {ex.InnerException?.Message}\n");
-            }
-            catch { }
+            LogHelper.WriteToConfigLog($"ConfigWindow constructor ERROR: {ex.Message}\n{ex.StackTrace}\nInner: {ex.InnerException?.Message}");
             
             MessageBox.Show(
                 $"ConfigWindow inicializálási hiba:\n\n{ex.Message}\n\n{ex.StackTrace}\n\nInner: {ex.InnerException?.Message}",
@@ -47,11 +71,7 @@ public partial class ConfigWindow : Window
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
-        try
-        {
-            File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ConfigWindow: CloseButton_Click called\n");
-        }
-        catch { }
+        LogHelper.WriteToConfigLog("ConfigWindow: CloseButton_Click called");
         Close();
     }
 }

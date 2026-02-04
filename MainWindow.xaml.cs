@@ -12,36 +12,20 @@ public partial class MainWindow : Window
     {
         try
         {
-            try
-            {
-                System.IO.File.AppendAllText("C:\\temp\\zedasa_startup.log", $"MainWindow constructor started\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog("MainWindow constructor started");
             
             InitializeComponent();
             
-            try
-            {
-                System.IO.File.AppendAllText("C:\\temp\\zedasa_startup.log", $"MainWindow InitializeComponent() completed\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog("MainWindow InitializeComponent() completed");
             
             // Initialize ViewModel after the window is loaded
             this.Loaded += MainWindow_Loaded;
             
-            try
-            {
-                System.IO.File.AppendAllText("C:\\temp\\zedasa_startup.log", $"MainWindow constructor completed, Loaded event handler registered\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog("MainWindow constructor completed, Loaded event handler registered");
         }
         catch (Exception ex)
         {
-            try
-            {
-                System.IO.File.AppendAllText("C:\\temp\\zedasa_startup.log", $"MAIN WINDOW INIT ERROR: {ex.Message}\n{ex.StackTrace}\nInner: {ex.InnerException?.Message}\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog($"MAIN WINDOW INIT ERROR: {ex.Message}\n{ex.StackTrace}\nInner: {ex.InnerException?.Message}");
             
             MessageBox.Show(
                 $"Ablak inicializálási hiba:\n\n{ex.Message}\n\n{ex.StackTrace}\n\nInner: {ex.InnerException?.Message}",
@@ -60,20 +44,12 @@ public partial class MainWindow : Window
     {
         try
         {
-            try
-            {
-                System.IO.File.AppendAllText("C:\\temp\\zedasa_startup.log", $"MainWindow_Loaded called, LoggedInUsername={LoggedInUsername}\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog($"MainWindow_Loaded called, LoggedInUsername={LoggedInUsername}");
             
             if (string.IsNullOrEmpty(LoggedInUsername))
             {
                 // If no username provided, show error and close window
-                try
-                {
-                    System.IO.File.AppendAllText("C:\\temp\\zedasa_startup.log", "MainWindow_Loaded: No username, closing window\n");
-                }
-                catch { }
+                LogHelper.WriteToStartupLog("MainWindow_Loaded: No username, closing window");
                 
                 MessageBox.Show(
                     "Nincs bejelentkezett felhasználó!",
@@ -85,11 +61,7 @@ public partial class MainWindow : Window
             }
 
             // Initialize ViewModel
-            try
-            {
-                System.IO.File.AppendAllText("C:\\temp\\zedasa_startup.log", "MainWindow_Loaded: Creating MainViewModel...\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog("MainWindow_Loaded: Creating MainViewModel...");
             
             var viewModel = new MainViewModel(LoggedInUsername);
             DataContext = viewModel;
@@ -100,20 +72,12 @@ public partial class MainWindow : Window
             // Load version number
             LoadVersion();
             
-            try
-            {
-                System.IO.File.AppendAllText("C:\\temp\\zedasa_startup.log", "MainWindow_Loaded: MainViewModel created successfully\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog("MainWindow_Loaded: MainViewModel created successfully");
             
             // Automatikusan kapcsolódunk az első szerverhez, ha van
             if (viewModel.SavedServers.Count > 0)
             {
-                try
-                {
-                    System.IO.File.AppendAllText("C:\\temp\\zedasa_startup.log", $"MainWindow_Loaded: Auto-connecting to first server: {viewModel.SavedServers[0].Name}\n");
-                }
-                catch { }
+                LogHelper.WriteToStartupLog($"MainWindow_Loaded: Auto-connecting to first server: {viewModel.SavedServers[0].Name}");
                 
                 // Kis késleltetés után automatikusan kapcsolódunk
                 Dispatcher.BeginInvoke(new Action(async () =>
@@ -124,11 +88,7 @@ public partial class MainWindow : Window
                     }
                     catch (Exception ex)
                     {
-                        try
-                        {
-                            System.IO.File.AppendAllText("C:\\temp\\zedasa_startup.log", $"Auto-connect error: {ex.Message}\n");
-                        }
-                        catch { }
+                        LogHelper.WriteToStartupLog($"Auto-connect error: {ex.Message}");
                     }
                 }), System.Windows.Threading.DispatcherPriority.Loaded);
             }
@@ -137,19 +97,11 @@ public partial class MainWindow : Window
             this.Activate();
             this.Focus();
             
-            try
-            {
-                System.IO.File.AppendAllText("C:\\temp\\zedasa_startup.log", $"MainWindow_Loaded: Window activated, Visibility={this.Visibility}, IsVisible={this.IsVisible}\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog($"MainWindow_Loaded: Window activated, Visibility={this.Visibility}, IsVisible={this.IsVisible}");
         }
         catch (Exception ex)
         {
-            try
-            {
-                System.IO.File.AppendAllText("C:\\temp\\zedasa_startup.log", $"MAIN VIEWMODEL ERROR: {ex.Message}\n{ex.StackTrace}\nInner: {ex.InnerException?.Message}\n");
-            }
-            catch { }
+            LogHelper.WriteToStartupLog($"MAIN VIEWMODEL ERROR: {ex.Message}\n{ex.StackTrace}\nInner: {ex.InnerException?.Message}");
             
             MessageBox.Show(
                 $"ViewModel inicializálási hiba:\n\n{ex.Message}\n\n{ex.StackTrace}\n\nInner: {ex.InnerException?.Message}",
@@ -177,6 +129,70 @@ public partial class MainWindow : Window
         if (ClusterManagementButton != null)
         {
             ClusterManagementButton.Content = LocalizationHelper.GetString("cluster_management");
+        }
+        if (ChangelogButton != null)
+        {
+            ChangelogButton.Content = LocalizationHelper.GetString("changelog");
+        }
+        if (AddServerButton != null)
+        {
+            AddServerButton.Content = LocalizationHelper.GetString("add_server");
+        }
+    }
+
+    private void AddServerButton_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button button)
+        {
+            button.Content = LocalizationHelper.GetString("add_server");
+        }
+    }
+
+    private void SettingsButton_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button button)
+        {
+            button.Content = LocalizationHelper.GetString("manager_settings");
+        }
+    }
+
+    private void ChangelogButton_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button button)
+        {
+            button.Content = LocalizationHelper.GetString("changelog");
+        }
+    }
+
+    private void ConnectButton_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button button)
+        {
+            button.Content = LocalizationHelper.GetString("connect");
+        }
+    }
+
+    private void DisconnectButton_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button button)
+        {
+            button.Content = LocalizationHelper.GetString("disconnect");
+        }
+    }
+
+    private void AddSavedServerButton_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button button)
+        {
+            button.Content = LocalizationHelper.GetString("add_ssh_connection");
+        }
+    }
+
+    private void RemoveSavedServerButton_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button button)
+        {
+            button.Content = LocalizationHelper.GetString("delete_ssh_connection");
         }
     }
     

@@ -51,15 +51,17 @@
                               Margin="0,0,8,0"
                               VerticalAlignment="Center"/>
                     
-                    <Button Content="Szerver Hozzáadása" 
+                    <Button x:Name="AddSavedServerButton"
                             Command="{Binding AddSavedServerCommand}"
                             Margin="0,0,8,0"
-                            Padding="12,6"/>
+                            Padding="12,6"
+                            Loaded="AddSavedServerButton_Loaded"/>
                     
-                    <Button Content="Szerver Törlése" 
+                    <Button x:Name="RemoveSavedServerButton"
                             Command="{Binding RemoveSavedServerCommand}"
                             Margin="0,0,8,0"
-                            Padding="12,6"/>
+                            Padding="12,6"
+                            Loaded="RemoveSavedServerButton_Loaded"/>
                     <Ellipse Width="12" Height="12" 
                              Margin="0,0,8,0"
                              VerticalAlignment="Center"
@@ -71,19 +73,26 @@
                     <Button Content="{Binding UpdateButtonText}" 
                             Command="{Binding CheckForUpdatesCommand}"
                             Margin="0,0,8,0"/>
-                    <Button Content="Beállítások" 
+                    <Button x:Name="SettingsButton"
                             Command="{Binding OpenSettingsCommand}"
-                            Margin="0,0,8,0"/>
+                            Margin="0,0,8,0"
+                            Loaded="SettingsButton_Loaded"/>
+                    <Button x:Name="ChangelogButton"
+                            Command="{Binding OpenChangelogCommand}"
+                            Margin="0,0,8,0"
+                            Loaded="ChangelogButton_Loaded"/>
                     <Button Content="ÁSZF" 
                             Click="ViewTermsButton_Click"
                             Margin="0,0,8,0"/>
-                    <Button Content="Kapcsolódás" 
+                    <Button x:Name="ConnectButton"
                             Command="{Binding ConnectCommand}"
                             Margin="0,0,8,0"
-                            Visibility="{Binding IsConnected, Converter={StaticResource InverseBooleanToVisibilityConverter}}"/>
-                    <Button Content="Kapcsolat Bontása" 
+                            Visibility="{Binding IsConnected, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
+                            Loaded="ConnectButton_Loaded"/>
+                    <Button x:Name="DisconnectButton"
                             Command="{Binding DisconnectCommand}"
-                            Visibility="{Binding IsConnected, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                            Visibility="{Binding IsConnected, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Loaded="DisconnectButton_Loaded"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -104,10 +113,11 @@
                                 Command="{Binding RefreshCommand}"
                                 Margin="0,0,8,0"
                                 Padding="12,6"/>
-                        <Button Content="Szerver Hozzáadása" 
+                        <Button x:Name="AddServerButton"
                                 Command="{Binding AddServerCommand}"
                                 Margin="0,0,8,0"
-                                Padding="12,6"/>
+                                Padding="12,6"
+                                Loaded="AddServerButton_Loaded"/>
                         <Button x:Name="ClusterManagementButton"
                                 Content="Cluster Kezelése" 
                                 Command="{Binding OpenClusterManagementCommand}"

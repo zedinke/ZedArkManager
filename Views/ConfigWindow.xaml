@@ -29,6 +29,10 @@
                     Command="{Binding LoadCommand}"
                     Margin="8,0"
                     Padding="12,6"/>
+            <Button Content="Szöveges Szerkesztő" 
+                    Command="{Binding OpenTextEditorCommand}"
+                    Margin="8,0"
+                    Padding="12,6"/>
         </StackPanel>
 
         <!-- Config Content -->

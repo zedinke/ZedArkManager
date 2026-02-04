@@ -9,5 +9,6 @@ public class SavedServer
     public string? EncryptedPassword { get; set; }
     public string? SshKeyPath { get; set; }
     public bool UseSshKey { get; set; }
+    public string ServerBasePath { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 }

@@ -4,10 +4,12 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="Kapcsolat Beállítások" Height="450" Width="500"
+        Title="Kapcsolat Beállítások" Height="563" Width="625"
         WindowStartupLocation="CenterScreen">
     <Grid Margin="16">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -27,37 +29,45 @@
                    FontWeight="Bold"
                    Margin="0,0,0,16"/>
 
-        <TextBlock Grid.Row="1" Text="Host:" VerticalAlignment="Center" Margin="0,0,0,4"/>
-        <TextBox Grid.Row="2" 
+        <TextBlock Grid.Row="1" Text="Szerver:" VerticalAlignment="Center" Margin="0,0,0,4"/>
+        <ComboBox Grid.Row="2"
+                  ItemsSource="{Binding SavedServers}"
+                  SelectedItem="{Binding SelectedSavedServer}"
+                  DisplayMemberPath="Name"
+                  Margin="0,0,0,16"
+                  Padding="8"/>
+
+        <TextBlock Grid.Row="3" Text="Host:" VerticalAlignment="Center" Margin="0,0,0,4"/>
+        <TextBox Grid.Row="4" 
                  Text="{Binding Host, UpdateSourceTrigger=PropertyChanged}"
                  Margin="0,0,0,8"
                  Padding="8"/>
 
-        <TextBlock Grid.Row="3" Text="Port:" VerticalAlignment="Center" Margin="0,0,0,4"/>
-        <TextBox Grid.Row="4" 
+        <TextBlock Grid.Row="5" Text="Port:" VerticalAlignment="Center" Margin="0,0,0,4"/>
+        <TextBox Grid.Row="6" 
                  Text="{Binding Port, UpdateSourceTrigger=PropertyChanged}"
                  Margin="0,0,0,8"
                  Padding="8"/>
 
-        <TextBlock Grid.Row="5" Text="Felhasználónév:" VerticalAlignment="Center" Margin="0,0,0,4"/>
-        <TextBox Grid.Row="6" 
+        <TextBlock Grid.Row="7" Text="Felhasználónév:" VerticalAlignment="Center" Margin="0,0,0,4"/>
+        <TextBox Grid.Row="8" 
                  Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
                  Margin="0,0,0,8"
                  Padding="8"/>
 
-        <CheckBox Grid.Row="7" 
+        <CheckBox Grid.Row="9" 
                   Content="SSH Kulcs Használata"
                   IsChecked="{Binding UseSshKey}"
                   Margin="0,0,0,8"/>
 
-        <StackPanel Grid.Row="8" x:Name="PasswordPanel">
+        <StackPanel Grid.Row="10" x:Name="PasswordPanel">
             <TextBlock Text="Jelszó:" VerticalAlignment="Center" Margin="0,0,0,4"/>
             <TextBox Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
                      Margin="0,0,0,8"
                      Padding="8"/>
         </StackPanel>
 
-        <StackPanel Grid.Row="8" x:Name="SshKeyPanel" Visibility="Collapsed">
+        <StackPanel Grid.Row="10" x:Name="SshKeyPanel" Visibility="Collapsed">
             <TextBlock Text="SSH Kulcs Útvonal:" VerticalAlignment="Center" Margin="0,0,0,4"/>
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -74,14 +84,15 @@
             </Grid>
         </StackPanel>
 
-        <TextBlock Grid.Row="9" Text="Szerver Alapútvonal:" VerticalAlignment="Center" Margin="0,0,0,4"/>
-        <TextBox Grid.Row="10" 
+        <TextBlock Grid.Row="11" Text="Szerver Alapútvonal:" VerticalAlignment="Center" Margin="0,0,0,4"/>
+        <TextBox Grid.Row="12" 
                  Text="{Binding ServerBasePath, UpdateSourceTrigger=PropertyChanged}"
                  Margin="0,0,0,8"
                  Padding="8"/>
 
-        <StackPanel Grid.Row="11" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Content="Mentés" 
+        <StackPanel Grid.Row="13" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="SaveButton"
+                    Content="{Binding SaveButtonText}" 
                     Command="{Binding SaveCommand}"
                     Margin="0,0,8,0"
                     Padding="12,6"

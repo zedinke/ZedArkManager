@@ -22,16 +22,64 @@ public class ConfigService
         _basePath = basePath;
     }
 
-    public string GetConfigPath(string serverName, string configFileName)
+    public string GetConfigPath(string serverDirectoryPath, string configFileName)
     {
-        return $"{_basePath}/{serverName}/Instance_{serverName}/Saved/Config/WindowsServer/{configFileName}";
+        // The config path is: {serverDirectoryPath}/Instance_{instanceName}/Saved/Config/WindowsServer/{configFileName}
+        // We need to find the Instance_* directory dynamically
+        // For now, we'll use a pattern that searches for Instance_* directories
+        // This will be resolved in ReadConfigFileAsync and SaveConfigFileAsync
+        return $"{serverDirectoryPath}/Instance_*/Saved/Config/WindowsServer/{configFileName}";
     }
 
-    public async Task<string> ReadConfigFileAsync(string serverName, string configFileName)
+    private async Task<string> FindInstanceDirectoryAsync(string serverDirectoryPath)
     {
         try
         {
-            string remotePath = GetConfigPath(serverName, configFileName);
+            // Find Instance_* directories in the server directory
+            string findInstanceCommand = $"find \"{serverDirectoryPath}\" -maxdepth 1 -type d -name 'Instance_*' 2>/dev/null | head -1";
+            string foundInstancePath = await _sshService.ExecuteCommandAsync(findInstanceCommand);
+            
+            if (!string.IsNullOrEmpty(foundInstancePath.Trim()))
+            {
+                return foundInstancePath.Trim();
+            }
+            
+            // Fallback: try to construct path from server directory name
+            // Extract the last part of the directory path as instance name
+            string instanceName = serverDirectoryPath.Contains('/') 
+                ? serverDirectoryPath.Substring(serverDirectoryPath.LastIndexOf('/') + 1) 
+                : serverDirectoryPath;
+            
+            // If the name contains underscores, try to extract the last part
+            if (instanceName.Contains('_'))
+            {
+                string[] parts = instanceName.Split('_');
+                if (parts.Length > 1)
+                {
+                    instanceName = parts[parts.Length - 1];
+                }
+            }
+            
+            return $"{serverDirectoryPath}/Instance_{instanceName}";
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error finding instance directory: {ex.Message}");
+            // Fallback to default pattern
+            string instanceName = serverDirectoryPath.Contains('/') 
+                ? serverDirectoryPath.Substring(serverDirectoryPath.LastIndexOf('/') + 1) 
+                : serverDirectoryPath;
+            return $"{serverDirectoryPath}/Instance_{instanceName}";
+        }
+    }
+
+    public async Task<string> ReadConfigFileAsync(string serverDirectoryPath, string configFileName)
+    {
+        try
+        {
+            string instanceDir = await FindInstanceDirectoryAsync(serverDirectoryPath);
+            string remotePath = $"{instanceDir}/Saved/Config/WindowsServer/{configFileName}";
+            System.Diagnostics.Debug.WriteLine($"Reading config file from: {remotePath}");
             return await _sshService.ReadFileAsync(remotePath);
         }
         catch (Exception ex)
@@ -41,11 +89,13 @@ public class ConfigService
         }
     }
 
-    public async Task SaveConfigFileAsync(string serverName, string configFileName, string content)
+    public async Task SaveConfigFileAsync(string serverDirectoryPath, string configFileName, string content)
     {
         try
         {
-            string remotePath = GetConfigPath(serverName, configFileName);
+            string instanceDir = await FindInstanceDirectoryAsync(serverDirectoryPath);
+            string remotePath = $"{instanceDir}/Saved/Config/WindowsServer/{configFileName}";
+            System.Diagnostics.Debug.WriteLine($"Saving config file to: {remotePath}");
             await _sshService.WriteFileAsync(remotePath, content);
         }
         catch (Exception ex)

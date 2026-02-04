@@ -1,7 +1,9 @@
 using Renci.SshNet;
 using Renci.SshNet.Common;
+using System.IO;
 using System.Text;
 using ZedASAManager.Models;
+using Renci.SshNet.Sftp;
 
 namespace ZedASAManager.Services;
 
@@ -214,6 +216,59 @@ public class SshService : IDisposable
         catch (Exception ex)
         {
             OnErrorReceived($"Fájl írási hiba: {ex.Message}");
+            throw;
+        }
+    }
+
+    public async Task WriteBinaryFileAsync(string remotePath, byte[] fileBytes)
+    {
+        if (_sshClient == null || !_sshClient.IsConnected)
+        {
+            throw new InvalidOperationException("SSH kapcsolat nincs aktív.");
+        }
+
+        try
+        {
+            await Task.Run(() =>
+            {
+                // Use SFTP for binary file transfer
+                using var sftpClient = new SftpClient(_sshClient.ConnectionInfo);
+                sftpClient.Connect();
+
+                // Create directory if it doesn't exist
+                int lastSlash = remotePath.LastIndexOf('/');
+                if (lastSlash > 0)
+                {
+                    string directory = remotePath.Substring(0, lastSlash);
+                    string[] parts = directory.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                    string currentPath = "/";
+                    
+                    foreach (string part in parts)
+                    {
+                        currentPath = $"{currentPath}{part}/";
+                        if (!sftpClient.Exists(currentPath))
+                        {
+                            sftpClient.CreateDirectory(currentPath);
+                        }
+                    }
+                }
+
+                // Write file using SFTP
+                using var fileStream = sftpClient.OpenWrite(remotePath);
+                fileStream.Write(fileBytes, 0, fileBytes.Length);
+                fileStream.Flush();
+
+                sftpClient.Disconnect();
+            });
+        }
+        catch (SshConnectionException ex)
+        {
+            OnConnectionLost();
+            throw new Exception($"SSH kapcsolat megszakadt: {ex.Message}", ex);
+        }
+        catch (Exception ex)
+        {
+            OnErrorReceived($"Bináris fájl írási hiba: {ex.Message}");
             throw;
         }
     }

@@ -6,7 +6,7 @@
   "compilationOptions": {},
   "targets": {
     ".NETCoreApp,Version=v8.0": {
-      "ZedASAManager/1.0.8": {
+      "ZedASAManager/1.0.24": {
         "dependencies": {
           "LiveCharts.Wpf": "0.9.7",
           "MaterialDesignColors": "5.3.0",
@@ -115,7 +115,7 @@
     }
   },
   "libraries": {
-    "ZedASAManager/1.0.8": {
+    "ZedASAManager/1.0.24": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

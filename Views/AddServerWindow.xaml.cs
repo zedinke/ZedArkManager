@@ -15,6 +15,7 @@ public partial class AddServerWindow : Window
     private readonly string _username;
     private readonly string _serverBasePath;
     private readonly ObservableCollection<ClusterInfo> _clusters = new();
+    private readonly ObservableCollection<MapInfo> _maps = new();
     private int _asaPort;
     private int _rconPort;
 
@@ -26,8 +27,45 @@ public partial class AddServerWindow : Window
         _serverBasePath = serverBasePath ?? $"/home/{username}/asa_server";
         ClusterComboBox.ItemsSource = _clusters;
         ClusterComboBox.SelectionChanged += ClusterComboBox_SelectionChanged;
+        InitializeMaps();
         LoadLocalizedStrings();
         _ = LoadClustersAndPortsAsync();
+    }
+
+    private void InitializeMaps()
+    {
+        _maps.Clear();
+        _maps.Add(new MapInfo { DisplayName = "The Island", Value = "TheIsland" });
+        _maps.Add(new MapInfo { DisplayName = "The Center", Value = "TheCenter" });
+        _maps.Add(new MapInfo { DisplayName = "Scorched Earth", Value = "ScorchedEarth" });
+        _maps.Add(new MapInfo { DisplayName = "Aberration", Value = "Aberration" });
+        _maps.Add(new MapInfo { DisplayName = "Extinction", Value = "Extinction" });
+        _maps.Add(new MapInfo { DisplayName = "Valguero", Value = "Valhuero" });
+        _maps.Add(new MapInfo { DisplayName = "Astraeos", Value = "Astraeos" });
+        _maps.Add(new MapInfo { DisplayName = "Lost Colony", Value = "LostColony" });
+        _maps.Add(new MapInfo { DisplayName = "Ragnarok", Value = "Ragnarok" });
+        _maps.Add(new MapInfo { DisplayName = "GigArk Island", Value = "gigarkisland_WP" });
+        _maps.Add(new MapInfo { DisplayName = "Other", Value = "Other" });
+        
+        MapNameComboBox.ItemsSource = _maps;
+        MapNameComboBox.SelectedItem = _maps.FirstOrDefault(m => m.Value == "Aberration");
+    }
+
+    private void MapNameComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (MapNameComboBox.SelectedItem is MapInfo selectedMap)
+        {
+            if (selectedMap.Value == "Other")
+            {
+                CustomMapNameTextBox.Visibility = Visibility.Visible;
+                CustomMapNameTextBox.Text = "";
+            }
+            else
+            {
+                CustomMapNameTextBox.Visibility = Visibility.Collapsed;
+                CustomMapNameTextBox.Text = "";
+            }
+        }
     }
 
     private async void ClusterComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -396,7 +434,8 @@ public partial class AddServerWindow : Window
             dockerComposeContent.AppendLine($"      - ENABLE_MOTD={EnableMotdCheckBox.IsChecked.Value.ToString().ToUpper()}");
             dockerComposeContent.AppendLine($"      - MOTD={MotdTextBox.Text}");
             dockerComposeContent.AppendLine($"      - MOTD_DURATION={MotdDurationTextBox.Text}");
-            dockerComposeContent.AppendLine($"      - MAP_NAME={MapNameTextBox.Text}");
+            string mapName = GetSelectedMapName();
+            dockerComposeContent.AppendLine($"      - MAP_NAME={mapName}");
             dockerComposeContent.AppendLine($"      - SESSION_NAME={SessionNameTextBox.Text}");
             dockerComposeContent.AppendLine($"      - SERVER_ADMIN_PASSWORD={ServerAdminPasswordTextBox.Text}");
             dockerComposeContent.AppendLine($"      - SERVER_PASSWORD={ServerPasswordTextBox.Text}");
@@ -452,7 +491,7 @@ public partial class AddServerWindow : Window
             envContent.AppendLine($"ENABLE_MOTD={EnableMotdCheckBox.IsChecked.Value.ToString().ToUpper()}");
             envContent.AppendLine($"MOTD={MotdTextBox.Text}");
             envContent.AppendLine($"MOTD_DURATION={MotdDurationTextBox.Text}");
-            envContent.AppendLine($"MAP_NAME={MapNameTextBox.Text}");
+            envContent.AppendLine($"MAP_NAME={mapName}");
             envContent.AppendLine($"SESSION_NAME={SessionNameTextBox.Text}");
             envContent.AppendLine($"SERVER_ADMIN_PASSWORD={ServerAdminPasswordTextBox.Text}");
             envContent.AppendLine($"SERVER_PASSWORD={ServerPasswordTextBox.Text}");
@@ -493,9 +532,28 @@ public partial class AddServerWindow : Window
         }
     }
 
+    private string GetSelectedMapName()
+    {
+        if (MapNameComboBox.SelectedItem is MapInfo selectedMap)
+        {
+            if (selectedMap.Value == "Other")
+            {
+                return CustomMapNameTextBox.Text.Trim();
+            }
+            return selectedMap.Value;
+        }
+        return "Aberration"; // Default fallback
+    }
+
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {
         DialogResult = false;
         Close();
     }
+}
+
+public class MapInfo
+{
+    public string DisplayName { get; set; } = string.Empty;
+    public string Value { get; set; } = string.Empty;
 }

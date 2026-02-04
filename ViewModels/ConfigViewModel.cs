@@ -23,34 +23,31 @@ public class ConfigViewModel : ViewModelBase
     {
         try
         {
-            System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ConfigViewModel constructor started\n");
-            System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ConfigService is null: {configService == null}\n");
-            System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ServerInstance is null: {serverInstance == null}\n");
+            LogHelper.WriteToConfigLog("ConfigViewModel constructor started");
+            LogHelper.WriteToConfigLog($"ConfigService is null: {configService == null}");
+            LogHelper.WriteToConfigLog($"ServerInstance is null: {serverInstance == null}");
             
             if (serverInstance != null)
             {
-                System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ServerInstance.Name={serverInstance.Name}\n");
+                LogHelper.WriteToConfigLog($"ServerInstance.Name={serverInstance.Name}");
             }
             
             _configService = configService;
             _serverInstance = serverInstance;
             _sshService = sshService;
             
-            System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"Creating commands\n");
+            LogHelper.WriteToConfigLog("Creating commands");
             SaveCommand = new RelayCommandSyncTask(async () => await SaveConfigAsync(), () => !IsLoading);
             DownloadCommand = new RelayCommandSyncTask(async () => await DownloadConfigAsync(), () => !IsLoading);
             UploadCommand = new RelayCommandSyncTask(async () => await UploadConfigAsync(), () => !IsLoading);
             LoadCommand = new RelayCommandSyncTask(async () => await LoadConfigAsync(), () => !IsLoading);
+            OpenTextEditorCommand = new RelayCommandSync(() => OpenTextEditorWindow());
             
-            System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ConfigViewModel constructor completed successfully\n");
+            LogHelper.WriteToConfigLog("ConfigViewModel constructor completed successfully");
         }
         catch (Exception ex)
         {
-            try
-            {
-                System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ConfigViewModel constructor ERROR: {ex.Message}\n{ex.StackTrace}\nInner: {ex.InnerException?.Message}\n");
-            }
-            catch { }
+            LogHelper.WriteToConfigLog($"ConfigViewModel constructor ERROR: {ex.Message}\n{ex.StackTrace}\nInner: {ex.InnerException?.Message}");
             throw;
         }
     }
@@ -103,33 +100,83 @@ public class ConfigViewModel : ViewModelBase
     public ICommand DownloadCommand { get; }
     public ICommand UploadCommand { get; }
     public ICommand LoadCommand { get; }
+    public ICommand OpenTextEditorCommand { get; }
     public ICommand OpenLiveLogsCommand { get; }
 
     public async Task LoadConfigAsync()
     {
+        LogHelper.WriteToConfigLog("=== LoadConfigAsync called ===");
+        
+        if (IsLoading)
+        {
+            LogHelper.WriteToConfigLog("LoadConfigAsync: Already loading, skipping");
+            return;
+        }
+        
         IsLoading = true;
+        LogHelper.WriteToConfigLog($"LoadConfigAsync: IsLoading set to true");
+        
         try
         {
+            LogHelper.WriteToConfigLog($"Loading config files for server: {_serverInstance?.Name ?? "null"}");
+            
+            if (_serverInstance == null)
+            {
+                throw new Exception("ServerInstance is null");
+            }
+            
+            if (_configService == null)
+            {
+                throw new Exception("ConfigService is null");
+            }
+            
             // Load both config files
-            string gameIniContent = await _configService.ReadConfigFileAsync(_serverInstance.Name, "Game.ini");
-            string gameUserSettingsIniContent = await _configService.ReadConfigFileAsync(_serverInstance.Name, "GameUserSettings.ini");
+            LogHelper.WriteToConfigLog($"LoadConfigAsync: Server DirectoryPath={_serverInstance.DirectoryPath}");
+            LogHelper.WriteToConfigLog("LoadConfigAsync: Reading Game.ini...");
+            string gameIniContent = await _configService.ReadConfigFileAsync(_serverInstance.DirectoryPath, "Game.ini");
+            LogHelper.WriteToConfigLog($"Game.ini loaded, length: {gameIniContent?.Length ?? 0}");
+            
+            LogHelper.WriteToConfigLog("LoadConfigAsync: Reading GameUserSettings.ini...");
+            string gameUserSettingsIniContent = await _configService.ReadConfigFileAsync(_serverInstance.DirectoryPath, "GameUserSettings.ini");
+            LogHelper.WriteToConfigLog($"GameUserSettings.ini loaded, length: {gameUserSettingsIniContent?.Length ?? 0}");
 
-            GameIni = _configService.ParseIniFile(gameIniContent);
-            GameUserSettingsIni = _configService.ParseIniFile(gameUserSettingsIniContent);
-
-            OnPropertyChanged(nameof(CurrentIniFile));
+            LogHelper.WriteToConfigLog("LoadConfigAsync: Parsing Game.ini...");
+            GameIni = _configService.ParseIniFile(gameIniContent ?? string.Empty);
+            LogHelper.WriteToConfigLog($"GameIni parsed, sections: {GameIni?.Sections?.Count ?? 0}");
+            
+            LogHelper.WriteToConfigLog("LoadConfigAsync: Parsing GameUserSettings.ini...");
+            GameUserSettingsIni = _configService.ParseIniFile(gameUserSettingsIniContent ?? string.Empty);
+            LogHelper.WriteToConfigLog($"GameUserSettingsIni parsed, sections: {GameUserSettingsIni?.Sections?.Count ?? 0}");
+            
+            LogHelper.WriteToConfigLog("LoadConfigAsync: Raising property changed events...");
+            
+            // Frissítjük az összes property-t a UI-ban
+            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+            {
+                OnPropertyChanged(nameof(CurrentIniFile));
+                OnPropertyChanged(nameof(GameIni));
+                OnPropertyChanged(nameof(GameUserSettingsIni));
+            });
+            
+            LogHelper.WriteToConfigLog("LoadConfigAsync completed successfully");
         }
         catch (Exception ex)
         {
-            System.Windows.MessageBox.Show(
-                $"Konfiguráció betöltési hiba:\n\n{ex.Message}",
-                "Hiba",
-                System.Windows.MessageBoxButton.OK,
-                System.Windows.MessageBoxImage.Error);
+            LogHelper.WriteToConfigLog($"LoadConfigAsync error: {ex.Message}\n{ex.StackTrace}\nInner: {ex.InnerException?.Message}");
+            
+            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+            {
+                System.Windows.MessageBox.Show(
+                    $"Konfiguráció betöltési hiba:\n\n{ex.Message}\n\nStackTrace:\n{ex.StackTrace}",
+                    "Hiba",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+            });
         }
         finally
         {
             IsLoading = false;
+            LogHelper.WriteToConfigLog($"LoadConfigAsync finished, IsLoading={IsLoading}");
         }
     }
 
@@ -149,7 +196,7 @@ public class ConfigViewModel : ViewModelBase
             }
 
             string content = _configService.SerializeIniFile(CurrentIniFile);
-            await _configService.SaveConfigFileAsync(_serverInstance.Name, SelectedConfigFile, content);
+            await _configService.SaveConfigFileAsync(_serverInstance.DirectoryPath, SelectedConfigFile, content);
 
             System.Windows.MessageBox.Show(
                 "Konfiguráció sikeresen mentve!",
@@ -267,6 +314,37 @@ public class ConfigViewModel : ViewModelBase
         }
     }
 
+    private void OpenTextEditorWindow()
+    {
+        try
+        {
+            if (!_sshService.IsConnected)
+            {
+                System.Windows.MessageBox.Show(
+                    "Nincs aktív SSH kapcsolat!",
+                    "Hiba",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
+            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+            {
+                var textEditorWindow = new Views.ConfigTextEditorWindow(_configService, _serverInstance.DirectoryPath, _serverInstance.Name);
+                textEditorWindow.Owner = System.Windows.Application.Current.MainWindow;
+                textEditorWindow.ShowDialog();
+            });
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show(
+                $"Hiba a szöveges szerkesztő megnyitásakor:\n\n{ex.Message}",
+                "Hiba",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Error);
+        }
+    }
+
 }
 
 public class RelayCommandSyncTask : ICommand
@@ -289,7 +367,22 @@ public class RelayCommandSyncTask : ICommand
 
     public async void Execute(object? parameter)
     {
-        await _execute();
+        try
+        {
+            await _execute();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"RelayCommandSyncTask Execute error: {ex.Message}\n{ex.StackTrace}");
+            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+            {
+                System.Windows.MessageBox.Show(
+                    $"Command execution error: {ex.Message}",
+                    "Error",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+            });
+        }
     }
 
     public void RaiseCanExecuteChanged()

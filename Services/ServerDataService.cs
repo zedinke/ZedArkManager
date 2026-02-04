@@ -105,14 +105,23 @@ public class ServerDataService
 
     public ConnectionSettings ConvertToConnectionSettings(SavedServer server)
     {
-        return new ConnectionSettings
+        var settings = new ConnectionSettings
         {
             Host = server.Host,
             Port = server.Port,
             Username = server.Username,
             EncryptedPassword = server.EncryptedPassword,
             SshKeyPath = server.SshKeyPath,
-            UseSshKey = server.UseSshKey
+            UseSshKey = server.UseSshKey,
+            ServerBasePath = server.ServerBasePath
         };
+        
+        // Ha nincs ServerBasePath, generáljuk
+        if (string.IsNullOrEmpty(settings.ServerBasePath) && !string.IsNullOrEmpty(settings.Username))
+        {
+            settings.ServerBasePath = $"/home/{settings.Username}/asa_server";
+        }
+        
+        return settings;
     }
 }

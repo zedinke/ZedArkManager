@@ -17,6 +17,9 @@
   "stop": "Leállítás",
   "restart": "Újraindítás",
   "update": "Frissítés",
+  "manager_update": "Manager Update",
+  "server_update": "Server Update",
+  "add_host": "Add Host",
   "start_all": "Összes Indítása",
   "stop_all": "Összes Leállítása",
   "update_all": "Összes Frissítése",
@@ -52,6 +55,7 @@
   "add": "Hozzáadás",
   "remove": "Törlés",
   "cancel": "Mégse",
+  "save": "Mentés",
   "server_added": "Szerver hozzáadva",
   "server_removed": "Szerver törölve",
   "invalid_directory": "Érvénytelen könyvtár",
@@ -146,5 +150,12 @@
   "server_base_path": "Szerver Alapútvonal",
   "refresh": "Frissítés",
   "refreshing": "Frissítés...",
-  "refresh_completed": "Frissítés befejezve"
+  "refresh_completed": "Frissítés befejezve",
+  "changelog": "Változásnapló",
+  "versions": "Verziók",
+  "select_version": "Válassz ki egy verziót a listából",
+  "docker_setup": "Docker Setup",
+  "docker_setup_saved": "Docker beállítás sikeresen mentve",
+  "text_editor": "Szöveges Szerkesztő",
+  "config_saved_successfully": "Konfiguráció sikeresen mentve"
 }
