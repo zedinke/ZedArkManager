@@ -77,8 +77,14 @@ public class SettingsService
                 Port = 22,
                 Username = "zedinke",
                 EncryptedPassword = EncryptionService.Encrypt("geleta"),
-                UseSshKey = false
+                UseSshKey = false,
+                ServerBasePath = "/home/zedinke/asa_server"
             };
+        }
+        else if (string.IsNullOrEmpty(settings.ServerBasePath) && !string.IsNullOrEmpty(settings.Username))
+        {
+            // Ha nincs beállítva ServerBasePath, de van Username, akkor generáljuk
+            settings.ServerBasePath = $"/home/{settings.Username}/asa_server";
         }
         
         return settings;

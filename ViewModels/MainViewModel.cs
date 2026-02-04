@@ -51,6 +51,7 @@ public class MainViewModel : ViewModelBase
         RemoveServerCommand = new RelayCommand<ServerCardViewModel>(async (vm) => await RemoveServerAsync(vm), () => IsConnected);
         AddSavedServerCommand = new RelayCommandSync(() => AddSavedServer());
         RemoveSavedServerCommand = new RelayCommandSync(() => RemoveSavedServer(), () => SelectedSavedServer != null);
+        RefreshCommand = new RelayCommand(async () => await RefreshAsync(), () => IsConnected);
         _sshService.OutputReceived += OnSshOutputReceived;
         _sshService.ErrorReceived += OnSshErrorReceived;
         _sshService.ConnectionLost += OnSshConnectionLost;
@@ -120,6 +121,7 @@ public class MainViewModel : ViewModelBase
                 if (UpdateAllCommand is RelayCommand updateCmd) updateCmd.RaiseCanExecuteChanged();
                 if (AddServerCommand is RelayCommand addServerCmd) addServerCmd.RaiseCanExecuteChanged();
                 if (RemoveServerCommand is RelayCommand<ServerCardViewModel> removeServerCmd) removeServerCmd.RaiseCanExecuteChanged();
+                if (RefreshCommand is RelayCommand refreshCmd) refreshCmd.RaiseCanExecuteChanged();
             }
         }
     }
@@ -154,6 +156,7 @@ public class MainViewModel : ViewModelBase
     public ICommand CheckForUpdatesCommand { get; }
     public ICommand AddSavedServerCommand { get; }
     public ICommand RemoveSavedServerCommand { get; }
+    public ICommand RefreshCommand { get; }
 
     public string CurrentUsername
     {
@@ -280,6 +283,17 @@ public class MainViewModel : ViewModelBase
                 // Set connection settings for monitoring service (needed for sudo commands)
                 _monitoringService.SetConnectionSettings(CurrentConnection);
                 
+                // Set server base path for discovery service
+                string basePath = CurrentConnection.ServerBasePath;
+                if (string.IsNullOrEmpty(basePath) && !string.IsNullOrEmpty(CurrentConnection.Username))
+                {
+                    basePath = $"/home/{CurrentConnection.Username}/asa_server";
+                }
+                if (!string.IsNullOrEmpty(basePath))
+                {
+                    _discoveryService.SetBasePath(basePath);
+                }
+                
                 // Initialize chart series now that we're connected
                 ChartViewModel.InitializeSeries();
                 
@@ -340,6 +354,30 @@ public class MainViewModel : ViewModelBase
         }
     }
 
+    private async Task RefreshAsync()
+    {
+        if (!IsConnected)
+            return;
+
+        try
+        {
+            AppendToLog(LocalizationHelper.GetString("refreshing"));
+            
+            // Újrafelderítjük a szervereket
+            await DiscoverServersAsync();
+            
+            // Újraindítjuk a monitoring-ot, hogy az új szervereket is figyelje
+            _monitoringService.Stop();
+            _monitoringService.Start();
+            
+            AppendToLog(LocalizationHelper.GetString("refresh_completed"));
+        }
+        catch (Exception ex)
+        {
+            AppendToLog($"{LocalizationHelper.GetString("error")}: {ex.Message}");
+        }
+    }
+
     private async Task ExecuteClusterActionAsync(string action)
     {
         if (!IsConnected || Servers.Count == 0)
@@ -385,7 +423,12 @@ public class MainViewModel : ViewModelBase
     {
         System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
-            var clusterWindow = new Views.ClusterManagementWindow(_sshService, CurrentConnection?.Username ?? string.Empty, IsConnected);
+            string basePath = CurrentConnection?.ServerBasePath ?? string.Empty;
+            if (string.IsNullOrEmpty(basePath) && !string.IsNullOrEmpty(CurrentConnection?.Username))
+            {
+                basePath = $"/home/{CurrentConnection.Username}/asa_server";
+            }
+            var clusterWindow = new Views.ClusterManagementWindow(_sshService, CurrentConnection?.Username ?? string.Empty, IsConnected, basePath);
             clusterWindow.Owner = System.Windows.Application.Current.MainWindow;
             clusterWindow.ShowDialog();
         });
@@ -406,7 +449,12 @@ public class MainViewModel : ViewModelBase
 
         System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
-            var addServerWindow = new Views.AddServerWindow(_sshService, CurrentConnection?.Username ?? string.Empty);
+            string basePath = CurrentConnection?.ServerBasePath ?? string.Empty;
+            if (string.IsNullOrEmpty(basePath) && !string.IsNullOrEmpty(CurrentConnection?.Username))
+            {
+                basePath = $"/home/{CurrentConnection.Username}/asa_server";
+            }
+            var addServerWindow = new Views.AddServerWindow(_sshService, CurrentConnection?.Username ?? string.Empty, basePath);
             addServerWindow.Owner = System.Windows.Application.Current.MainWindow;
             var result = addServerWindow.ShowDialog();
 

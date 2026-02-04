@@ -142,5 +142,9 @@
   "release_notes": "Release Notes:",
   "no_release_notes": "No release notes available",
   "pid": "PID",
-  "pid_not_available": "-"
+  "pid_not_available": "-",
+  "server_base_path": "Server Base Path",
+  "refresh": "Refresh",
+  "refreshing": "Refreshing...",
+  "refresh_completed": "Refresh completed"
 }

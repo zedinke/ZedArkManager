@@ -17,14 +17,16 @@ public partial class ClusterManagementWindow : Window
 {
     private readonly SshService _sshService;
     private readonly string _username;
+    private readonly string _serverBasePath;
     private readonly bool _isConnected;
     private readonly ObservableCollection<ClusterInfo> _clusters = new();
 
-    public ClusterManagementWindow(SshService sshService, string username, bool isConnected)
+    public ClusterManagementWindow(SshService sshService, string username, bool isConnected, string? serverBasePath = null)
     {
         InitializeComponent();
         _sshService = sshService;
         _username = username;
+        _serverBasePath = serverBasePath ?? $"/home/{username}/asa_server";
         _isConnected = isConnected;
         ClustersItemsControl.ItemsSource = _clusters;
         LoadLocalizedStrings();
@@ -61,8 +63,8 @@ public partial class ClusterManagementWindow : Window
 
         try
         {
-            // List all directories starting with Cluster_ in /home/{user}/asa_server/
-            string basePath = $"/home/{_username}/asa_server";
+            // List all directories starting with Cluster_ in serverBasePath
+            string basePath = _serverBasePath;
             string command = $"ls -d {basePath}/Cluster_* 2>/dev/null | sed 's|{basePath}/||'";
             string output = await _sshService.ExecuteCommandAsync(command);
 
@@ -104,7 +106,7 @@ public partial class ClusterManagementWindow : Window
             return;
         }
 
-        var createClusterWindow = new CreateClusterWindow(_sshService, _username);
+        var createClusterWindow = new CreateClusterWindow(_sshService, _username, _serverBasePath);
         createClusterWindow.Owner = this;
         var result = createClusterWindow.ShowDialog();
         

@@ -6,11 +6,17 @@ namespace ZedASAManager.Services;
 public class ServerDiscoveryService
 {
     private readonly SshService _sshService;
-    private const string BasePath = "/home/zedinke/asa_server";
+    private string _basePath;
 
-    public ServerDiscoveryService(SshService sshService)
+    public ServerDiscoveryService(SshService sshService, string? basePath = null)
     {
         _sshService = sshService;
+        _basePath = basePath ?? "/home/zedinke/asa_server";
+    }
+
+    public void SetBasePath(string basePath)
+    {
+        _basePath = basePath;
     }
 
     public async Task<List<ServerInstance>> DiscoverServersAsync()
@@ -20,7 +26,7 @@ public class ServerDiscoveryService
         try
         {
             // Optimized: Check POK-manager.sh and list directories in one command
-            string command = $"for dir in {BasePath}/*/; do [ -f \"$dir/POK-manager.sh\" ] && echo \"$dir\"; done 2>/dev/null";
+            string command = $"for dir in {_basePath}/*/; do [ -f \"$dir/POK-manager.sh\" ] && echo \"$dir\"; done 2>/dev/null";
             string output = await _sshService.ExecuteCommandAsync(command);
 
             var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);

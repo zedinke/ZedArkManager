@@ -8,17 +8,23 @@ public class ConfigService
 {
     private readonly SshService _sshService;
     private readonly ConfigDescriptionService _descriptionService;
-    private const string BasePath = "/home/zedinke/asa_server";
+    private string _basePath;
 
-    public ConfigService(SshService sshService)
+    public ConfigService(SshService sshService, string? basePath = null)
     {
         _sshService = sshService;
         _descriptionService = new ConfigDescriptionService();
+        _basePath = basePath ?? "/home/zedinke/asa_server";
+    }
+
+    public void SetBasePath(string basePath)
+    {
+        _basePath = basePath;
     }
 
     public string GetConfigPath(string serverName, string configFileName)
     {
-        return $"{BasePath}/{serverName}/Instance_{serverName}/Saved/Config/WindowsServer/{configFileName}";
+        return $"{_basePath}/{serverName}/Instance_{serverName}/Saved/Config/WindowsServer/{configFileName}";
     }
 
     public async Task<string> ReadConfigFileAsync(string serverName, string configFileName)

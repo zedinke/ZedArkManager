@@ -118,6 +118,16 @@ public class ConnectionSettingsViewModel : ViewModelBase
         }
     }
 
+    public string ServerBasePath
+    {
+        get => _settings.ServerBasePath;
+        set
+        {
+            _settings.ServerBasePath = value;
+            OnPropertyChanged();
+        }
+    }
+
     public ICommand SaveCommand { get; }
 
     private void SaveSettings()

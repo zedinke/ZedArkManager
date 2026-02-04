@@ -8,4 +8,5 @@ public class ConnectionSettings
     public string EncryptedPassword { get; set; } = string.Empty;
     public string? SshKeyPath { get; set; }
     public bool UseSshKey { get; set; } = false;
+    public string ServerBasePath { get; set; } = string.Empty;
 }

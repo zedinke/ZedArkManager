@@ -559,8 +559,13 @@ public class ServerCardViewModel : ViewModelBase
             }
 
             System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"SSH Service is connected, creating ConfigService\n");
-            var configService = new Services.ConfigService(_sshService);
-            System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ConfigService created, ServerName={_model.Name}\n");
+            string basePath = _connectionSettings?.ServerBasePath ?? string.Empty;
+            if (string.IsNullOrEmpty(basePath) && !string.IsNullOrEmpty(_connectionSettings?.Username))
+            {
+                basePath = $"/home/{_connectionSettings.Username}/asa_server";
+            }
+            var configService = new Services.ConfigService(_sshService, basePath);
+            System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"ConfigService created, ServerName={_model.Name}, BasePath={basePath}\n");
             
             System.IO.File.AppendAllText("C:\\temp\\zedasa_config_debug.log", $"Creating ConfigViewModel\n");
             var configViewModel = new ConfigViewModel(configService, _model, _sshService);

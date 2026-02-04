@@ -99,7 +99,7 @@ namespace ZedASAManager.Views {
                 return;
             }
             _contentLoaded = true;
-            System.Uri resourceLocater = new System.Uri("/ZedASAManager;component/views/createclusterwindow.xaml", System.UriKind.Relative);
+            System.Uri resourceLocater = new System.Uri("/ZedASAManager;V1.0.8.0;component/views/createclusterwindow.xaml", System.UriKind.Relative);
             
             #line 1 "..\..\..\..\Views\CreateClusterWindow.xaml"
             System.Windows.Application.LoadComponent(this, resourceLocater);

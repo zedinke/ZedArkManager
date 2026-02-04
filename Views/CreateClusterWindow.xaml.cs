@@ -9,12 +9,14 @@ public partial class CreateClusterWindow : Window
 {
     private readonly SshService _sshService;
     private readonly string _username;
+    private readonly string _serverBasePath;
 
-    public CreateClusterWindow(SshService sshService, string username)
+    public CreateClusterWindow(SshService sshService, string username, string? serverBasePath = null)
     {
         InitializeComponent();
         _sshService = sshService;
         _username = username;
+        _serverBasePath = serverBasePath ?? $"/home/{username}/asa_server";
         LoadLocalizedStrings();
         ClusterNameTextBox.Focus();
     }
@@ -94,8 +96,8 @@ public partial class CreateClusterWindow : Window
             // Add Cluster_ prefix automatically
             string fullClusterName = clusterName.StartsWith("Cluster_") ? clusterName : $"Cluster_{clusterName}";
 
-            // Create directory: /home/{user}/asa_server/Cluster_{Cluster-neve}
-            string directoryPath = $"/home/{_username}/asa_server/{fullClusterName}";
+            // Create directory: {serverBasePath}/Cluster_{Cluster-neve}
+            string directoryPath = $"{_serverBasePath}/{fullClusterName}";
             string command = $"mkdir -p \"{directoryPath}\"";
 
             await _sshService.ExecuteCommandAsync(command);

@@ -87,7 +87,6 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <!-- Port Info and Game Day -->
@@ -116,59 +115,8 @@
                                Foreground="#666"/>
                 </StackPanel>
 
-                <!-- Stats Grid -->
-                <Grid Grid.Row="2" Margin="0,0,0,16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    
-                    <!-- CPU Usage -->
-                    <Border Grid.Column="0" 
-                            BorderBrush="#E0E0E0" 
-                            BorderThickness="1" 
-                            CornerRadius="4"
-                            Padding="12"
-                            Margin="0,0,8,0"
-                            Background="#F5F5F5">
-                        <StackPanel>
-                            <TextBlock Text="CPU" 
-                                       FontSize="11"
-                                       Foreground="#666"
-                                       Margin="0,0,0,4"/>
-                            <TextBlock FontSize="20"
-                                       FontWeight="Bold"
-                                       Foreground="#6200EA">
-                                <Run Text="{Binding CpuUsage, Mode=OneWay, StringFormat='{}{0:F1}'}"/>
-                                <Run Text="%"/>
-                            </TextBlock>
-                        </StackPanel>
-                    </Border>
-                    
-                    <!-- Memory Usage -->
-                    <Border Grid.Column="1" 
-                            BorderBrush="#E0E0E0" 
-                            BorderThickness="1" 
-                            CornerRadius="4"
-                            Padding="12"
-                            Margin="8,0,0,0"
-                            Background="#F5F5F5">
-                        <StackPanel>
-                            <TextBlock Text="RAM" 
-                                       FontSize="11"
-                                       Foreground="#666"
-                                       Margin="0,0,0,4"/>
-                            <TextBlock Text="{Binding MemoryUsage, Mode=OneWay}" 
-                                       FontSize="16"
-                                       FontWeight="Bold"
-                                       Foreground="#6200EA"
-                                       TextWrapping="Wrap"/>
-                        </StackPanel>
-                    </Border>
-                </Grid>
-
                 <!-- Action Buttons -->
-                <StackPanel Grid.Row="3" Margin="0,0,0,8">
+                <StackPanel Grid.Row="2" Margin="0,0,0,8">
                     <UniformGrid Columns="2" Rows="2" Margin="0,0,0,4">
                         <Button Content="Indítás" 
                                 Command="{Binding StartCommand}"

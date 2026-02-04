@@ -13,15 +13,17 @@ public partial class AddServerWindow : Window
 {
     private readonly SshService _sshService;
     private readonly string _username;
+    private readonly string _serverBasePath;
     private readonly ObservableCollection<ClusterInfo> _clusters = new();
     private int _asaPort;
     private int _rconPort;
 
-    public AddServerWindow(SshService sshService, string username)
+    public AddServerWindow(SshService sshService, string username, string? serverBasePath = null)
     {
         InitializeComponent();
         _sshService = sshService;
         _username = username;
+        _serverBasePath = serverBasePath ?? $"/home/{username}/asa_server";
         ClusterComboBox.ItemsSource = _clusters;
         ClusterComboBox.SelectionChanged += ClusterComboBox_SelectionChanged;
         LoadLocalizedStrings();
@@ -90,7 +92,7 @@ public partial class AddServerWindow : Window
         try
         {
             // Load clusters
-            string basePath = $"/home/{_username}/asa_server";
+            string basePath = _serverBasePath;
             string clusterCommand = $"ls -d {basePath}/Cluster_* 2>/dev/null | sed 's|{basePath}/||'";
             string clusterOutput = await _sshService.ExecuteCommandAsync(clusterCommand);
 
@@ -334,7 +336,7 @@ public partial class AddServerWindow : Window
             var selectedCluster = (ClusterInfo)ClusterComboBox.SelectedItem;
             string serverFolderName = ServerFolderNameTextBox.Text.Trim();
             string serverDirectoryName = $"{selectedCluster.Name}_{serverFolderName}";
-            string basePath = $"/home/{_username}/asa_server";
+            string basePath = _serverBasePath;
             string serverPath = $"{basePath}/{serverDirectoryName}";
 
             // Create directory
