@@ -157,5 +157,7 @@
   "docker_setup": "Docker Setup",
   "docker_setup_saved": "Docker beállítás sikeresen mentve",
   "text_editor": "Szöveges Szerkesztő",
-  "config_saved_successfully": "Konfiguráció sikeresen mentve"
+  "config_saved_successfully": "Konfiguráció sikeresen mentve",
+  "search": "Keresés",
+  "find_next": "Következő"
 }

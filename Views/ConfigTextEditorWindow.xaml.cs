@@ -10,6 +10,7 @@ public partial class ConfigTextEditorWindow : Window
     private readonly ConfigService _configService;
     private readonly string _serverDirectoryPath;
     private string _currentConfigFile = "Game.ini";
+    private int _lastSearchIndex = 0;
 
     public ConfigTextEditorWindow(ConfigService configService, string serverDirectoryPath, string serverName)
     {
@@ -20,6 +21,7 @@ public partial class ConfigTextEditorWindow : Window
         TitleTextBlock.Text = $"{LocalizationHelper.GetString("text_editor")}: {serverName}";
         LoadButton.Content = LocalizationHelper.GetString("load");
         SaveButton.Content = LocalizationHelper.GetString("save");
+        FindNextButton.Content = LocalizationHelper.GetString("find_next");
         
         // Initialize ComboBox
         ConfigFileComboBox.Items.Add("Game.ini");
@@ -102,6 +104,50 @@ public partial class ConfigTextEditorWindow : Window
             
             SaveButton.Content = LocalizationHelper.GetString("save");
             SaveButton.IsEnabled = true;
+        }
+    }
+
+    private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        _lastSearchIndex = 0;
+        FindNextButton_Click(sender, e);
+    }
+
+    private void FindNextButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(SearchTextBox.Text))
+        {
+            return;
+        }
+
+        string searchText = SearchTextBox.Text;
+        string content = ConfigTextBox.Text;
+        
+        int startIndex = _lastSearchIndex;
+        int foundIndex = content.IndexOf(searchText, startIndex, StringComparison.OrdinalIgnoreCase);
+        
+        if (foundIndex == -1 && startIndex > 0)
+        {
+            // Try from beginning if not found from current position
+            foundIndex = content.IndexOf(searchText, 0, StringComparison.OrdinalIgnoreCase);
+            _lastSearchIndex = 0;
+        }
+        
+        if (foundIndex >= 0)
+        {
+            ConfigTextBox.Focus();
+            ConfigTextBox.Select(foundIndex, searchText.Length);
+            ConfigTextBox.ScrollToLine(ConfigTextBox.GetLineIndexFromCharacterIndex(foundIndex));
+            _lastSearchIndex = foundIndex + searchText.Length;
+        }
+        else
+        {
+            MessageBox.Show(
+                $"Nem található: {searchText}",
+                LocalizationHelper.GetString("search"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            _lastSearchIndex = 0;
         }
     }
 

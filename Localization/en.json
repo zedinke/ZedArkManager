@@ -160,5 +160,7 @@
   "docker_setup": "Docker Setup",
   "docker_setup_saved": "Docker setup saved successfully",
   "text_editor": "Text Editor",
-  "config_saved_successfully": "Configuration saved successfully"
+  "config_saved_successfully": "Configuration saved successfully",
+  "search": "Search",
+  "find_next": "Find Next"
 }

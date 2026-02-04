@@ -18,21 +18,30 @@
                    FontWeight="Bold" 
                    Margin="0,0,0,16"/>
 
-        <!-- Config File Selector -->
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,16">
-            <TextBlock Text="Konfiguráció fájl:" VerticalAlignment="Center" Margin="0,0,8,0"/>
-            <ComboBox SelectedItem="{Binding SelectedConfigFile}" 
-                      ItemsSource="{Binding ConfigFiles}"
-                      Width="200"
-                      Margin="0,0,16,0"/>
-            <Button Content="Betöltés" 
-                    Command="{Binding LoadCommand}"
-                    Margin="8,0"
-                    Padding="12,6"/>
-            <Button Content="Szöveges Szerkesztő" 
-                    Command="{Binding OpenTextEditorCommand}"
-                    Margin="8,0"
-                    Padding="12,6"/>
+        <!-- Config File Selector and Search -->
+        <StackPanel Grid.Row="1" Margin="0,0,0,16">
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                <TextBlock Text="Konfiguráció fájl:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <ComboBox SelectedItem="{Binding SelectedConfigFile}" 
+                          ItemsSource="{Binding ConfigFiles}"
+                          Width="200"
+                          Margin="0,0,16,0"/>
+                <Button Content="Betöltés" 
+                        Command="{Binding LoadCommand}"
+                        Margin="8,0"
+                        Padding="12,6"/>
+                <Button Content="Szöveges Szerkesztő" 
+                        Command="{Binding OpenTextEditorCommand}"
+                        Margin="8,0"
+                        Padding="12,6"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Keresés:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" 
+                         Width="300"
+                         Padding="8,4"
+                         VerticalContentAlignment="Center"/>
+            </StackPanel>
         </StackPanel>
 
         <!-- Config Content -->
@@ -40,7 +49,7 @@
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Auto"
                       Margin="0,0,0,16">
-            <ItemsControl ItemsSource="{Binding CurrentIniFile.Sections}">
+            <ItemsControl ItemsSource="{Binding FilteredCurrentIniFile.Sections}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <StackPanel Margin="0,0,0,16">

@@ -12,11 +12,11 @@ using System.Reflection;
 
 [assembly: System.Reflection.AssemblyCompanyAttribute("ZedASAManager")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
-[assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.24.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.24+0e773fac953836c7c2b3c6b9f8704a00aa8d8855")]
+[assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.25.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.25+cc585fd68ca6acb9879ca1223096512604aaf565")]
 [assembly: System.Reflection.AssemblyProductAttribute("ZedASAManager")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ZedASAManager")]
-[assembly: System.Reflection.AssemblyVersionAttribute("1.0.24.0")]
+[assembly: System.Reflection.AssemblyVersionAttribute("1.0.25.0")]
 [assembly: System.Runtime.Versioning.TargetPlatformAttribute("Windows7.0")]
 [assembly: System.Runtime.Versioning.SupportedOSPlatformAttribute("Windows7.0")]
 

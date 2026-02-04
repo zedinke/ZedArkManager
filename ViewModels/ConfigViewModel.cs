@@ -16,8 +16,11 @@ public class ConfigViewModel : ViewModelBase
     private readonly SshService _sshService;
     private IniFile? _gameIni;
     private IniFile? _gameUserSettingsIni;
+    private IniFile? _filteredGameIni;
+    private IniFile? _filteredGameUserSettingsIni;
     private bool _isLoading;
     private string _selectedConfigFile = "Game.ini";
+    private string _searchText = string.Empty;
 
     public ConfigViewModel(ConfigService configService, ServerInstance serverInstance, SshService sshService)
     {
@@ -61,6 +64,8 @@ public class ConfigViewModel : ViewModelBase
             if (SetProperty(ref _selectedConfigFile, value))
             {
                 OnPropertyChanged(nameof(CurrentIniFile));
+                ApplySearchFilter();
+                OnPropertyChanged(nameof(FilteredCurrentIniFile));
             }
         }
     }
@@ -70,16 +75,54 @@ public class ConfigViewModel : ViewModelBase
     public IniFile? GameIni
     {
         get => _gameIni;
-        set => SetProperty(ref _gameIni, value);
+        set
+        {
+            if (SetProperty(ref _gameIni, value))
+            {
+                ApplySearchFilter();
+                OnPropertyChanged(nameof(FilteredCurrentIniFile));
+            }
+        }
     }
 
     public IniFile? GameUserSettingsIni
     {
         get => _gameUserSettingsIni;
-        set => SetProperty(ref _gameUserSettingsIni, value);
+        set
+        {
+            if (SetProperty(ref _gameUserSettingsIni, value))
+            {
+                ApplySearchFilter();
+                OnPropertyChanged(nameof(FilteredCurrentIniFile));
+            }
+        }
+    }
+
+    public string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            if (SetProperty(ref _searchText, value))
+            {
+                ApplySearchFilter();
+            }
+        }
     }
 
     public IniFile? CurrentIniFile => SelectedConfigFile == "Game.ini" ? GameIni : GameUserSettingsIni;
+    
+    public IniFile? FilteredCurrentIniFile
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(SearchText))
+            {
+                return CurrentIniFile;
+            }
+            return SelectedConfigFile == "Game.ini" ? _filteredGameIni : _filteredGameUserSettingsIni;
+        }
+    }
 
     public bool IsLoading
     {
@@ -156,6 +199,8 @@ public class ConfigViewModel : ViewModelBase
                 OnPropertyChanged(nameof(CurrentIniFile));
                 OnPropertyChanged(nameof(GameIni));
                 OnPropertyChanged(nameof(GameUserSettingsIni));
+                ApplySearchFilter();
+                OnPropertyChanged(nameof(FilteredCurrentIniFile));
             });
             
             LogHelper.WriteToConfigLog("LoadConfigAsync completed successfully");
@@ -312,6 +357,63 @@ public class ConfigViewModel : ViewModelBase
         {
             IsLoading = false;
         }
+    }
+
+    private void ApplySearchFilter()
+    {
+        if (string.IsNullOrWhiteSpace(SearchText))
+        {
+            _filteredGameIni = null;
+            _filteredGameUserSettingsIni = null;
+            OnPropertyChanged(nameof(FilteredCurrentIniFile));
+            return;
+        }
+
+        string searchLower = SearchText.ToLowerInvariant();
+
+        if (GameIni != null)
+        {
+            _filteredGameIni = FilterIniFile(GameIni, searchLower);
+        }
+
+        if (GameUserSettingsIni != null)
+        {
+            _filteredGameUserSettingsIni = FilterIniFile(GameUserSettingsIni, searchLower);
+        }
+
+        OnPropertyChanged(nameof(FilteredCurrentIniFile));
+    }
+
+    private IniFile FilterIniFile(IniFile iniFile, string searchText)
+    {
+        var filtered = new IniFile();
+        
+        foreach (var section in iniFile.Sections)
+        {
+            var filteredSection = new IniSection { Name = section.Name };
+            bool sectionMatches = section.Name.ToLowerInvariant().Contains(searchText);
+            
+            foreach (var line in section.Lines)
+            {
+                bool lineMatches = sectionMatches ||
+                    line.Key.ToLowerInvariant().Contains(searchText) ||
+                    line.Value.ToLowerInvariant().Contains(searchText) ||
+                    line.Description.ToLowerInvariant().Contains(searchText) ||
+                    line.Content.ToLowerInvariant().Contains(searchText);
+                
+                if (lineMatches)
+                {
+                    filteredSection.Lines.Add(line);
+                }
+            }
+            
+            if (filteredSection.Lines.Count > 0 || sectionMatches)
+            {
+                filtered.Sections.Add(filteredSection);
+            }
+        }
+        
+        return filtered;
     }
 
     private void OpenTextEditorWindow()
