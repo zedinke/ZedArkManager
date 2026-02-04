@@ -59,7 +59,7 @@ namespace ZedASAManager.Views {
                 return;
             }
             _contentLoaded = true;
-            System.Uri resourceLocater = new System.Uri("/ZedASAManager;V1.0.25.0;component/views/termswindow.xaml", System.UriKind.Relative);
+            System.Uri resourceLocater = new System.Uri("/ZedASAManager;V1.0.26.0;component/views/termswindow.xaml", System.UriKind.Relative);
             
             #line 1 "..\..\..\..\Views\TermsWindow.xaml"
             System.Windows.Application.LoadComponent(this, resourceLocater);

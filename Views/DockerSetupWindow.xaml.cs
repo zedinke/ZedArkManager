@@ -40,7 +40,7 @@ public partial class DockerSetupWindow : Window
         _maps.Add(new MapInfo { DisplayName = "Scorched Earth", Value = "ScorchedEarth" });
         _maps.Add(new MapInfo { DisplayName = "Aberration", Value = "Aberration" });
         _maps.Add(new MapInfo { DisplayName = "Extinction", Value = "Extinction" });
-        _maps.Add(new MapInfo { DisplayName = "Valguero", Value = "Valhuero" });
+        _maps.Add(new MapInfo { DisplayName = "Valguero", Value = "Valguero" });
         _maps.Add(new MapInfo { DisplayName = "Astraeos", Value = "Astraeos" });
         _maps.Add(new MapInfo { DisplayName = "Lost Colony", Value = "LostColony" });
         _maps.Add(new MapInfo { DisplayName = "Ragnarok", Value = "Ragnarok" });

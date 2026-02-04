@@ -123,7 +123,7 @@ namespace ZedASAManager.Views {
                 return;
             }
             _contentLoaded = true;
-            System.Uri resourceLocater = new System.Uri("/ZedASAManager;V1.0.25.0;component/views/serversettingswindow.xaml", System.UriKind.Relative);
+            System.Uri resourceLocater = new System.Uri("/ZedASAManager;V1.0.26.0;component/views/serversettingswindow.xaml", System.UriKind.Relative);
             
             #line 1 "..\..\..\..\Views\ServerSettingsWindow.xaml"
             System.Windows.Application.LoadComponent(this, resourceLocater);
