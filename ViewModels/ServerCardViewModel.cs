@@ -10,27 +10,41 @@ public class ServerCardViewModel : ViewModelBase
     private readonly SshService _sshService;
     private readonly MonitoringService _monitoringService;
     private readonly ConnectionSettings? _connectionSettings;
+    private readonly LoggingService? _loggingService;
+    private readonly AdminService? _adminService;
+    private readonly NotificationService? _notificationService;
+    private readonly string _currentUsername;
+    private readonly Models.User? _currentUser;
     private ServerInstance _model;
     private bool _isBusy;
 
-    public ServerCardViewModel(ServerInstance model, SshService sshService, MonitoringService monitoringService, ConnectionSettings? connectionSettings = null)
+    public ServerCardViewModel(ServerInstance model, SshService sshService, MonitoringService monitoringService, ConnectionSettings? connectionSettings = null, LoggingService? loggingService = null, string currentUsername = "", AdminService? adminService = null, NotificationService? notificationService = null, Models.User? currentUser = null)
     {
         _model = model;
         _sshService = sshService;
         _monitoringService = monitoringService;
         _connectionSettings = connectionSettings;
+        _loggingService = loggingService;
+        _adminService = adminService;
+        _notificationService = notificationService;
+        _currentUsername = currentUsername;
+        _currentUser = currentUser;
 
-        StartCommand = new RelayCommand(async () => await ExecuteActionAsync("start"), () => !IsBusy);
-        StopCommand = new RelayCommand(async () => await ExecuteStopAsync(), () => !IsBusy);
-        RestartCommand = new RelayCommand(async () => await ExecuteActionAsync("restart"), () => !IsBusy);
-        UpdateCommand = new RelayCommand(async () => await ExecuteUpdateAsync(), () => !IsBusy);
-        ShutdownCommand = new RelayCommand(async () => await ExecuteShutdownAsync(), () => !IsBusy);
+        StartCommand = new RelayCommand(async () => await ExecuteActionAsync("start"), () => !IsBusy && CanStart);
+        StopCommand = new RelayCommand(async () => await ExecuteStopAsync(), () => !IsBusy && CanStop);
+        RestartCommand = new RelayCommand(async () => await ExecuteActionAsync("restart"), () => !IsBusy && CanRestart);
+        UpdateCommand = new RelayCommand(async () => await ExecuteUpdateAsync(), () => !IsBusy && CanUpdate);
+        ShutdownCommand = new RelayCommand(async () => await ExecuteShutdownAsync(), () => !IsBusy && CanShutdown);
+        BackupCommand = new RelayCommand(async () => await ExecuteBackupAsync(), () => !IsBusy && CanBackup);
         ConfigCommand = new RelayCommandSync(() => OpenConfigWindow());
         OpenLiveLogsCommand = new RelayCommandSync(() => OpenLiveLogsWindow());
         DockerSetupCommand = new RelayCommand(async () => await OpenDockerSetupWindowAsync());
 
         _monitoringService.ServerStatsUpdated += OnServerStatsUpdated;
         _monitoringService.RegisterServer(model.Name, model.DirectoryPath);
+        
+        // Load permissions asynchronously
+        _ = LoadPermissionsAsync();
     }
 
     public ServerInstance Model
@@ -50,7 +64,84 @@ public class ServerCardViewModel : ViewModelBase
                 ((RelayCommand)StopCommand).RaiseCanExecuteChanged();
                 ((RelayCommand)RestartCommand).RaiseCanExecuteChanged();
                 ((RelayCommand)UpdateCommand).RaiseCanExecuteChanged();
+                ((RelayCommand)BackupCommand).RaiseCanExecuteChanged();
             }
+        }
+    }
+
+    private async Task LoadPermissionsAsync()
+    {
+        // If user is Manager Admin or Server Admin, grant all permissions
+        if (_currentUser != null && (_currentUser.UserType == UserType.ManagerAdmin || _currentUser.UserType == UserType.ServerAdmin))
+        {
+            CanStart = true;
+            CanStop = true;
+            CanRestart = true;
+            CanUpdate = true;
+            CanShutdown = true;
+            CanBackup = true;
+            CanConfig = true;
+            CanLiveLogs = true;
+            CanDockerSetup = true;
+            
+            // Notify property changes
+            OnPropertyChanged(nameof(CanStart));
+            OnPropertyChanged(nameof(CanStop));
+            OnPropertyChanged(nameof(CanRestart));
+            OnPropertyChanged(nameof(CanUpdate));
+            OnPropertyChanged(nameof(CanShutdown));
+            OnPropertyChanged(nameof(CanBackup));
+            OnPropertyChanged(nameof(CanConfig));
+            OnPropertyChanged(nameof(CanLiveLogs));
+            OnPropertyChanged(nameof(CanDockerSetup));
+            
+            // Update command can execute
+            ((RelayCommand)StartCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)StopCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)RestartCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)UpdateCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)ShutdownCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)BackupCommand).RaiseCanExecuteChanged();
+            return;
+        }
+
+        if (_adminService == null || string.IsNullOrEmpty(_currentUsername))
+            return;
+
+        try
+        {
+            CanStart = await _adminService.HasPermissionAsync(_currentUsername, "Start");
+            CanStop = await _adminService.HasPermissionAsync(_currentUsername, "Stop");
+            CanRestart = await _adminService.HasPermissionAsync(_currentUsername, "Restart");
+            CanUpdate = await _adminService.HasPermissionAsync(_currentUsername, "Update");
+            CanShutdown = await _adminService.HasPermissionAsync(_currentUsername, "Shutdown");
+            CanBackup = await _adminService.HasPermissionAsync(_currentUsername, "Backup");
+            CanConfig = await _adminService.HasPermissionAsync(_currentUsername, "Config");
+            CanLiveLogs = await _adminService.HasPermissionAsync(_currentUsername, "LiveLogs");
+            CanDockerSetup = await _adminService.HasPermissionAsync(_currentUsername, "DockerSetup");
+            
+            // Notify property changes
+            OnPropertyChanged(nameof(CanStart));
+            OnPropertyChanged(nameof(CanStop));
+            OnPropertyChanged(nameof(CanRestart));
+            OnPropertyChanged(nameof(CanUpdate));
+            OnPropertyChanged(nameof(CanShutdown));
+            OnPropertyChanged(nameof(CanBackup));
+            OnPropertyChanged(nameof(CanConfig));
+            OnPropertyChanged(nameof(CanLiveLogs));
+            OnPropertyChanged(nameof(CanDockerSetup));
+            
+            // Update command can execute
+            ((RelayCommand)StartCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)StopCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)RestartCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)UpdateCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)ShutdownCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)BackupCommand).RaiseCanExecuteChanged();
+        }
+        catch
+        {
+            // Default to allowing on error
         }
     }
 
@@ -70,9 +161,30 @@ public class ServerCardViewModel : ViewModelBase
     public ICommand RestartCommand { get; }
     public ICommand UpdateCommand { get; }
     public ICommand ShutdownCommand { get; }
+    public ICommand BackupCommand { get; }
     public ICommand ConfigCommand { get; }
     public ICommand OpenLiveLogsCommand { get; }
     public ICommand DockerSetupCommand { get; }
+
+    private bool _canStart = true;
+    private bool _canStop = true;
+    private bool _canRestart = true;
+    private bool _canUpdate = true;
+    private bool _canShutdown = true;
+    private bool _canBackup = true;
+    private bool _canConfig = true;
+    private bool _canLiveLogs = true;
+    private bool _canDockerSetup = true;
+
+    public bool CanStart { get => _canStart; private set => SetProperty(ref _canStart, value); }
+    public bool CanStop { get => _canStop; private set => SetProperty(ref _canStop, value); }
+    public bool CanRestart { get => _canRestart; private set => SetProperty(ref _canRestart, value); }
+    public bool CanUpdate { get => _canUpdate; private set => SetProperty(ref _canUpdate, value); }
+    public bool CanShutdown { get => _canShutdown; private set => SetProperty(ref _canShutdown, value); }
+    public bool CanBackup { get => _canBackup; private set => SetProperty(ref _canBackup, value); }
+    public bool CanConfig { get => _canConfig; private set => SetProperty(ref _canConfig, value); }
+    public bool CanLiveLogs { get => _canLiveLogs; private set => SetProperty(ref _canLiveLogs, value); }
+    public bool CanDockerSetup { get => _canDockerSetup; private set => SetProperty(ref _canDockerSetup, value); }
 
     private async Task<string> GetInstanceNameAsync()
     {
@@ -130,6 +242,25 @@ public class ServerCardViewModel : ViewModelBase
     {
         if (IsBusy || !_sshService.IsConnected)
             return;
+
+        // Check permission - ServerAdmin and ManagerAdmin have all permissions
+        if (_currentUser != null && (_currentUser.UserType == UserType.ManagerAdmin || _currentUser.UserType == UserType.ServerAdmin))
+        {
+            // ServerAdmin and ManagerAdmin have permission, continue
+        }
+        else if (_adminService != null && !string.IsNullOrEmpty(_currentUsername))
+        {
+            bool hasPermission = await _adminService.HasPermissionAsync(_currentUsername, action == "start" ? "Start" : "Restart");
+            if (!hasPermission)
+            {
+                System.Windows.MessageBox.Show(
+                    "You do not have permission to perform this action.",
+                    LocalizationHelper.GetString("error"),
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+        }
 
         // Get instance name (without Instance_ prefix) - needed for confirmation dialog
         string instanceName = await GetInstanceNameAsync();
@@ -269,6 +400,16 @@ public class ServerCardViewModel : ViewModelBase
                 // But since we're using a single command, the script handles it
                 await Task.Delay(TimeSpan.FromSeconds(2));
             }
+
+            // Log action
+            if (_loggingService != null && !string.IsNullOrEmpty(_currentUsername))
+            {
+                string actionKey = action == "start" ? "started_server" : action == "restart" ? "restarted_server" : "";
+                if (!string.IsNullOrEmpty(actionKey))
+                {
+                    await _loggingService.LogServerActionAsync(_currentUsername, LocalizationHelper.GetString(actionKey), Model.Name);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -287,6 +428,25 @@ public class ServerCardViewModel : ViewModelBase
     {
         if (IsBusy || !_sshService.IsConnected)
             return;
+
+        // Check permission - ServerAdmin and ManagerAdmin have all permissions
+        if (_currentUser != null && (_currentUser.UserType == UserType.ManagerAdmin || _currentUser.UserType == UserType.ServerAdmin))
+        {
+            // ServerAdmin and ManagerAdmin have permission, continue
+        }
+        else if (_adminService != null && !string.IsNullOrEmpty(_currentUsername))
+        {
+            bool hasPermission = await _adminService.HasPermissionAsync(_currentUsername, "Stop");
+            if (!hasPermission)
+            {
+                System.Windows.MessageBox.Show(
+                    "You do not have permission to perform this action.",
+                    LocalizationHelper.GetString("error"),
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+        }
 
         // Get instance name (without Instance_ prefix) - needed for confirmation dialog
         string instanceName = await GetInstanceNameAsync();
@@ -378,6 +538,12 @@ public class ServerCardViewModel : ViewModelBase
             // Update status window
             statusWindow.UpdateStatus(LocalizationHelper.GetString("server_stopped"));
             statusWindow.SetCompleted();
+
+            // Log action
+            if (_loggingService != null && !string.IsNullOrEmpty(_currentUsername))
+            {
+                await _loggingService.LogServerActionAsync(_currentUsername, LocalizationHelper.GetString("stopped_server"), Model.Name);
+            }
         }
         catch (Exception ex)
         {
@@ -398,6 +564,25 @@ public class ServerCardViewModel : ViewModelBase
     {
         if (IsBusy || !_sshService.IsConnected)
             return;
+
+        // Check permission - ServerAdmin and ManagerAdmin have all permissions
+        if (_currentUser != null && (_currentUser.UserType == UserType.ManagerAdmin || _currentUser.UserType == UserType.ServerAdmin))
+        {
+            // ServerAdmin and ManagerAdmin have permission, continue
+        }
+        else if (_adminService != null && !string.IsNullOrEmpty(_currentUsername))
+        {
+            bool hasPermission = await _adminService.HasPermissionAsync(_currentUsername, "Shutdown");
+            if (!hasPermission)
+            {
+                System.Windows.MessageBox.Show(
+                    "You do not have permission to perform this action.",
+                    LocalizationHelper.GetString("error"),
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+        }
 
         // Get instance name (without Instance_ prefix) - needed for confirmation dialog
         string instanceName = await GetInstanceNameAsync();
@@ -532,9 +717,22 @@ public class ServerCardViewModel : ViewModelBase
             string result = await _sshService.ExecuteCommandAsync(shutdownCommand);
             System.Diagnostics.Debug.WriteLine($"Shutdown command result: {result}");
 
+            // Mark scheduled shutdown in monitoring service
+            _monitoringService.MarkScheduledShutdown(Model.Name);
+            
+            // Show notification for shutdown started
+            _notificationService?.ShowNotification(NotificationService.NotificationType.ShutdownStarted, Model.Name);
+
             // Update status window
             statusWindow.UpdateStatus($"{LocalizationHelper.GetString("shutdown_scheduled")} ({minutes} perc múlva)");
             statusWindow.SetCompleted();
+
+            // Log action
+            if (_loggingService != null && !string.IsNullOrEmpty(_currentUsername))
+            {
+                string additionalInfo = string.Format(LocalizationHelper.GetString("in_minutes"), minutes);
+                await _loggingService.LogServerActionAsync(_currentUsername, LocalizationHelper.GetString("scheduled_shutdown_for"), Model.Name, additionalInfo);
+            }
         }
         catch (Exception ex)
         {
@@ -556,22 +754,53 @@ public class ServerCardViewModel : ViewModelBase
         if (IsBusy || !_sshService.IsConnected)
             return;
 
+        // Check permission - ServerAdmin and ManagerAdmin have all permissions
+        if (_currentUser != null && (_currentUser.UserType == UserType.ManagerAdmin || _currentUser.UserType == UserType.ServerAdmin))
+        {
+            // ServerAdmin and ManagerAdmin have permission, continue
+        }
+        else if (_adminService != null && !string.IsNullOrEmpty(_currentUsername))
+        {
+            bool hasPermission = await _adminService.HasPermissionAsync(_currentUsername, "Update");
+            if (!hasPermission)
+            {
+                System.Windows.MessageBox.Show(
+                    "You do not have permission to perform this action.",
+                    LocalizationHelper.GetString("error"),
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+        }
+
         // Get instance name
         string instanceName = await GetInstanceNameAsync();
 
+        // Show dialog to get shutdown delay
+        var delayWindow = new Views.UpdateServerWithDelayWindow();
+        delayWindow.Owner = System.Windows.Application.Current.MainWindow;
+        bool? delayResult = delayWindow.ShowDialog();
+
+        if (delayResult != true || !delayWindow.Confirmed)
+        {
+            return;
+        }
+
+        int shutdownDelayMinutes = delayWindow.ShutdownDelayMinutes;
+
         // Show confirmation dialog
-        string message = $"Are you sure you want to update the server '{instanceName}'?\n\n" +
-                        "This will:\n" +
-                        "1. Stop the server\n" +
-                        "2. Wait 15 seconds\n" +
-                        "3. Run the update command (you can watch the live output)\n" +
-                        "4. Wait 10 minutes\n" +
-                        "5. Start the server again\n\n" +
-                        "Do you want to continue?";
+        string message = $"{Utilities.LocalizationHelper.GetString("update_server_confirmation") ?? "Are you sure you want to update the server"} '{instanceName}'?\n\n" +
+                        $"{Utilities.LocalizationHelper.GetString("update_process_steps") ?? "This will:"}\n" +
+                        $"1. {Utilities.LocalizationHelper.GetString("schedule_shutdown") ?? "Schedule shutdown"} ({shutdownDelayMinutes} {Utilities.LocalizationHelper.GetString("minutes") ?? "minutes"})\n" +
+                        $"2. {Utilities.LocalizationHelper.GetString("wait_for_shutdown") ?? "Wait for shutdown to complete"}\n" +
+                        $"3. {Utilities.LocalizationHelper.GetString("run_update_command") ?? "Run the update command"} ({Utilities.LocalizationHelper.GetString("live_output") ?? "you can watch the live output"})\n" +
+                        $"4. {Utilities.LocalizationHelper.GetString("wait_before_restart") ?? "Wait 10 minutes"}\n" +
+                        $"5. {Utilities.LocalizationHelper.GetString("start_server_again") ?? "Start the server again"}\n\n" +
+                        $"{Utilities.LocalizationHelper.GetString("continue_question") ?? "Do you want to continue?"}";
 
         var result = System.Windows.MessageBox.Show(
             message,
-            "Server Update",
+            Utilities.LocalizationHelper.GetString("server_update") ?? "Server Update",
             System.Windows.MessageBoxButton.YesNo,
             System.Windows.MessageBoxImage.Question);
 
@@ -586,8 +815,8 @@ public class ServerCardViewModel : ViewModelBase
 
         try
         {
-            // Open update window with live output
-            var updateWindow = new Views.UpdateServerWindow(_sshService, Model.DirectoryPath, instanceName);
+            // Open update window with live output and shutdown delay
+            var updateWindow = new Views.UpdateServerWindow(_sshService, Model.DirectoryPath, instanceName, shutdownDelayMinutes);
             updateWindow.Owner = System.Windows.Application.Current.MainWindow;
             updateWindow.Show();
 
@@ -596,6 +825,12 @@ public class ServerCardViewModel : ViewModelBase
 
             // Wait for update to complete (window will show progress)
             // The window can be closed by user, but update will continue in background
+
+            // Log action
+            if (_loggingService != null && !string.IsNullOrEmpty(_currentUsername))
+            {
+                await _loggingService.LogServerActionAsync(_currentUsername, LocalizationHelper.GetString("updated_server"), Model.Name);
+            }
         }
         catch (Exception ex)
         {
@@ -610,6 +845,125 @@ public class ServerCardViewModel : ViewModelBase
         {
             IsBusy = false;
             OnPropertyChanged(nameof(Status));
+        }
+    }
+
+    private async Task ExecuteBackupAsync()
+    {
+        if (IsBusy || !_sshService.IsConnected)
+            return;
+
+        // Check permission - ServerAdmin and ManagerAdmin have all permissions
+        if (_currentUser != null && (_currentUser.UserType == UserType.ManagerAdmin || _currentUser.UserType == UserType.ServerAdmin))
+        {
+            // ServerAdmin and ManagerAdmin have permission, continue
+        }
+        else if (_adminService != null && !string.IsNullOrEmpty(_currentUsername))
+        {
+            bool hasPermission = await _adminService.HasPermissionAsync(_currentUsername, "Backup");
+            if (!hasPermission)
+            {
+                System.Windows.MessageBox.Show(
+                    "You do not have permission to perform this action.",
+                    LocalizationHelper.GetString("error"),
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+        }
+
+        // Get instance name (without Instance_ prefix)
+        string instanceName = await GetInstanceNameAsync();
+        string containerName = $"asa_{instanceName}";
+
+        // Show confirmation dialog for backup action
+        string pokManagerPath = $"{Model.DirectoryPath}/POK-manager.sh";
+        string fullCommand = $"cd {Model.DirectoryPath} && ./POK-manager.sh -backup {containerName}";
+        string message = $"{LocalizationHelper.GetString("backup_confirm")}\n\n" +
+                       $"{LocalizationHelper.GetString("pok_manager_path")}: {pokManagerPath}\n\n" +
+                       $"Command: {fullCommand}";
+        
+        var result = System.Windows.MessageBox.Show(
+            message,
+            LocalizationHelper.GetString("backup"),
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Question);
+        
+        if (result != System.Windows.MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        // Show status window
+        var statusWindow = new Views.StopServerWindow();
+        statusWindow.Owner = System.Windows.Application.Current.MainWindow;
+        statusWindow.Title = LocalizationHelper.GetString("backup");
+        statusWindow.Show();
+
+        IsBusy = true;
+        Model.Status = ServerStatus.Busy;
+        OnPropertyChanged(nameof(Status));
+
+        try
+        {
+            statusWindow.UpdateStatus(LocalizationHelper.GetString("creating_backup"));
+            
+            // Get sudo password if available (same logic as start command)
+            string backupCommand;
+            string sudoPasswordPart = string.Empty;
+            
+            if (_connectionSettings != null && !_connectionSettings.UseSshKey && !string.IsNullOrEmpty(_connectionSettings.EncryptedPassword))
+            {
+                try
+                {
+                    string password = EncryptionService.Decrypt(_connectionSettings.EncryptedPassword);
+                    if (!string.IsNullOrEmpty(password))
+                    {
+                        string escapedPassword = password.Replace("'", "'\\''");
+                        sudoPasswordPart = $"echo '{escapedPassword}' | sudo -S bash -c \"cd {Model.DirectoryPath} && ./POK-manager.sh -backup {containerName}\"";
+                    }
+                }
+                catch
+                {
+                    // If password decryption fails, try without sudo password
+                }
+            }
+            
+            if (string.IsNullOrEmpty(sudoPasswordPart))
+            {
+                backupCommand = $"cd {Model.DirectoryPath} && (sudo -n ./POK-manager.sh -backup {containerName} 2>&1 || ./POK-manager.sh -backup {containerName})";
+            }
+            else
+            {
+                backupCommand = sudoPasswordPart;
+            }
+            
+            System.Diagnostics.Debug.WriteLine($"Executing backup command: {backupCommand}");
+            string commandResult = await _sshService.ExecuteCommandAsync(backupCommand);
+            System.Diagnostics.Debug.WriteLine($"Backup command result: {commandResult}");
+
+            // Update status window
+            statusWindow.UpdateStatus(LocalizationHelper.GetString("backup_created"));
+            statusWindow.SetCompleted();
+
+            // Log action
+            if (_loggingService != null && !string.IsNullOrEmpty(_currentUsername))
+            {
+                await _loggingService.LogServerActionAsync(_currentUsername, LocalizationHelper.GetString("created_backup_for"), Model.Name);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Backup hiba: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
+            
+            statusWindow.UpdateStatus($"{LocalizationHelper.GetString("error")}: {ex.Message}");
+            statusWindow.SetCompleted();
+        }
+        finally
+        {
+            IsBusy = false;
+            OnPropertyChanged(nameof(IsBusy));
         }
     }
 
@@ -652,10 +1006,29 @@ public class ServerCardViewModel : ViewModelBase
         });
     }
 
-    private void OpenConfigWindow()
+    private async void OpenConfigWindow()
     {
         try
         {
+            // Check permission - ServerAdmin and ManagerAdmin have all permissions
+            if (_currentUser != null && (_currentUser.UserType == UserType.ManagerAdmin || _currentUser.UserType == UserType.ServerAdmin))
+            {
+                // ServerAdmin and ManagerAdmin have permission, continue
+            }
+            else if (_adminService != null && !string.IsNullOrEmpty(_currentUsername))
+            {
+                bool hasPermission = await _adminService.HasPermissionAsync(_currentUsername, "Config");
+                if (!hasPermission)
+                {
+                    System.Windows.MessageBox.Show(
+                        "You do not have permission to perform this action.",
+                        LocalizationHelper.GetString("error"),
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Warning);
+                    return;
+                }
+            }
+
             LogHelper.WriteToConfigLog("=== OpenConfigWindow called ===");
             LogHelper.WriteToConfigLog($"SSH Service is null: {_sshService == null}");
             
@@ -702,10 +1075,29 @@ public class ServerCardViewModel : ViewModelBase
         }
     }
 
-    private void OpenLiveLogsWindow()
+    private async void OpenLiveLogsWindow()
     {
         try
         {
+            // Check permission - ServerAdmin and ManagerAdmin have all permissions
+            if (_currentUser != null && (_currentUser.UserType == UserType.ManagerAdmin || _currentUser.UserType == UserType.ServerAdmin))
+            {
+                // ServerAdmin and ManagerAdmin have permission, continue
+            }
+            else if (_adminService != null && !string.IsNullOrEmpty(_currentUsername))
+            {
+                bool hasPermission = await _adminService.HasPermissionAsync(_currentUsername, "LiveLogs");
+                if (!hasPermission)
+                {
+                    System.Windows.MessageBox.Show(
+                        "You do not have permission to perform this action.",
+                        LocalizationHelper.GetString("error"),
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Warning);
+                    return;
+                }
+            }
+
             if (!_sshService.IsConnected)
             {
                 System.Windows.MessageBox.Show(
@@ -750,6 +1142,25 @@ public class ServerCardViewModel : ViewModelBase
     {
         try
         {
+            // Check permission - ServerAdmin and ManagerAdmin have all permissions
+            if (_currentUser != null && (_currentUser.UserType == UserType.ManagerAdmin || _currentUser.UserType == UserType.ServerAdmin))
+            {
+                // ServerAdmin and ManagerAdmin have permission, continue
+            }
+            else if (_adminService != null && !string.IsNullOrEmpty(_currentUsername))
+            {
+                bool hasPermission = await _adminService.HasPermissionAsync(_currentUsername, "DockerSetup");
+                if (!hasPermission)
+                {
+                    System.Windows.MessageBox.Show(
+                        "You do not have permission to perform this action.",
+                        LocalizationHelper.GetString("error"),
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Warning);
+                    return;
+                }
+            }
+
             if (!_sshService.IsConnected)
             {
                 System.Windows.MessageBox.Show(

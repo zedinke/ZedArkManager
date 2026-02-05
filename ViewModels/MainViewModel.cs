@@ -15,6 +15,12 @@ public class MainViewModel : ViewModelBase
     private readonly UserService _userService;
     private readonly ServerDataService _serverDataService;
     private readonly UpdateService _updateService;
+    private readonly NotificationService _notificationService;
+    private LoggingService? _loggingService;
+    private AdminService? _adminService;
+    private LicenseService? _licenseService;
+    private LicenseValidator? _licenseValidator;
+    private DatabaseService? _databaseService;
 
     private ConnectionSettings? _currentConnection;
     private bool _isConnected;
@@ -25,10 +31,24 @@ public class MainViewModel : ViewModelBase
     private SavedServer? _selectedSavedServer;
     private ObservableCollection<SavedServer> _savedServers = new();
     private string _updateButtonText = "Frissítés";
+    private bool _isManagerAdmin = false;
+    private Models.User? _currentUser;
+    
+    // Navigation
+    private ObservableCollection<NavigationItem> _navigationItems = new();
+    private NavigationItem? _selectedNavigationItem;
+    private object? _selectedView;
 
-    public MainViewModel(string username)
+    public MainViewModel(string username, Models.User? user = null)
     {
         _currentUsername = username;
+        _currentUser = user;
+        
+        // Check if user is Manager Admin
+        if (user != null)
+        {
+            IsManagerAdmin = user.UserType == UserType.ManagerAdmin;
+        }
         _sshService = new SshService();
         _settingsService = new SettingsService();
         _userService = new UserService();
@@ -36,6 +56,8 @@ public class MainViewModel : ViewModelBase
         _discoveryService = new ServerDiscoveryService(_sshService);
         _monitoringService = new MonitoringService(_sshService);
         _updateService = new UpdateService();
+        _notificationService = new NotificationService();
+        _notificationService = new NotificationService();
 
         Servers = new ObservableCollection<ServerCardViewModel>();
 
@@ -53,16 +75,112 @@ public class MainViewModel : ViewModelBase
         RemoveSavedServerCommand = new RelayCommandSync(() => RemoveSavedServer(), () => SelectedSavedServer != null);
         RefreshCommand = new RelayCommand(async () => await RefreshAsync(), () => IsConnected);
         OpenChangelogCommand = new RelayCommandSync(() => OpenChangelog());
+        OpenNotificationsCommand = new RelayCommandSync(() => OpenNotifications());
+        OpenAdminManagementCommand = new RelayCommandSync(() => OpenAdminManagement());
+        OpenManagerAdminCommand = new RelayCommandSync(() => OpenManagerAdmin());
+        OpenUserProfileCommand = new RelayCommandSync(() => OpenUserProfile());
+        ViewTermsCommand = new RelayCommandSync(() => ViewTerms());
         _sshService.OutputReceived += OnSshOutputReceived;
         _sshService.ErrorReceived += OnSshErrorReceived;
         _sshService.ConnectionLost += OnSshConnectionLost;
         _monitoringService.ServerStatsUpdated += OnServerStatsUpdated;
         _monitoringService.StatusOutputReceived += OnStatusOutputReceived;
+        _monitoringService.ServerStatusChanged += OnServerStatusChanged;
+        _notificationService.NotificationAdded += OnNotificationAdded;
 
         ChartViewModel = new ChartViewModel();
 
         LoadSavedServers();
         LoadUpdateButtonText();
+        InitializeNavigation();
+    }
+    
+    private void InitializeNavigation()
+    {
+        _navigationItems.Clear();
+        
+        // Dashboard - Always try to create database service if user is logged in
+        DatabaseService? dashboardDbService = null;
+        if (_currentUser != null)
+        {
+            try
+            {
+                dashboardDbService = new DatabaseService(DatabaseConfiguration.GetConnectionString());
+                // Store it for later use
+                if (_databaseService == null)
+                {
+                    _databaseService = dashboardDbService;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to initialize database service in InitializeNavigation: {ex.Message}");
+                // If database connection fails, dashboard will work without news
+            }
+        }
+        
+        var dashboardViewModel = new DashboardViewModel(dashboardDbService);
+        var dashboardItem = new NavigationItem
+        {
+            Title = LocalizationHelper.GetString("dashboard") ?? "Dashboard",
+            Icon = "🏠",
+            View = new Views.DashboardView { DataContext = dashboardViewModel }
+        };
+        _navigationItems.Add(dashboardItem);
+        
+        // Servers
+        var serversItem = new NavigationItem
+        {
+            Title = LocalizationHelper.GetString("servers") ?? "Servers",
+            Icon = "🖥️",
+            View = new Views.ServersView { DataContext = this }
+        };
+        _navigationItems.Add(serversItem);
+        
+        // Performance Data
+        // Ensure ChartViewModel is initialized
+        if (ChartViewModel != null)
+        {
+            ChartViewModel.InitializeSeries();
+        }
+        var performanceDataViewModel = new PerformanceDataViewModel(_monitoringService, ChartViewModel);
+        var performanceDataItem = new NavigationItem
+        {
+            Title = LocalizationHelper.GetString("performance_data") ?? "Performance Data",
+            Icon = "📊",
+            View = new Views.PerformanceDataView { DataContext = performanceDataViewModel }
+        };
+        _navigationItems.Add(performanceDataItem);
+        
+        // Administration
+        var adminItem = new NavigationItem
+        {
+            Title = LocalizationHelper.GetString("administration") ?? "Administration",
+            Icon = "⚙️",
+            View = new Views.AdministrationView { DataContext = this }
+        };
+        _navigationItems.Add(adminItem);
+        
+        // Settings
+        var settingsItem = new NavigationItem
+        {
+            Title = LocalizationHelper.GetString("settings") ?? "Settings",
+            Icon = "🔧",
+            View = new Views.SettingsView { DataContext = this }
+        };
+        _navigationItems.Add(settingsItem);
+        
+        // Help
+        var helpItem = new NavigationItem
+        {
+            Title = LocalizationHelper.GetString("help") ?? "Help",
+            Icon = "❓",
+            View = new Views.HelpView { DataContext = this }
+        };
+        _navigationItems.Add(helpItem);
+        
+        // Set default selection
+        SelectedNavigationItem = dashboardItem;
     }
 
     private void LoadUpdateButtonText()
@@ -145,6 +263,40 @@ public class MainViewModel : ViewModelBase
     public ICommand AddServerCommand { get; }
     public ICommand RemoveServerCommand { get; }
 
+    private bool _canAddServer = true;
+    private bool _canRemoveServer = true;
+    private bool _canClusterManagement = true;
+
+    public bool CanAddServer { get => _canAddServer; private set => SetProperty(ref _canAddServer, value); }
+    public bool CanRemoveServer { get => _canRemoveServer; private set => SetProperty(ref _canRemoveServer, value); }
+    public bool CanClusterManagement { get => _canClusterManagement; private set => SetProperty(ref _canClusterManagement, value); }
+
+    private async Task LoadPermissionsAsync()
+    {
+        // If user is Manager Admin or Server Admin, grant all permissions
+        if (_currentUser != null && (_currentUser.UserType == UserType.ManagerAdmin || _currentUser.UserType == UserType.ServerAdmin))
+        {
+            CanAddServer = true;
+            CanRemoveServer = true;
+            CanClusterManagement = true;
+            return;
+        }
+
+        if (_adminService == null || string.IsNullOrEmpty(_currentUsername))
+            return;
+
+        try
+        {
+            CanAddServer = await _adminService.HasPermissionAsync(_currentUsername, "AddServer");
+            CanRemoveServer = await _adminService.HasPermissionAsync(_currentUsername, "RemoveServer");
+            CanClusterManagement = await _adminService.HasPermissionAsync(_currentUsername, "ClusterManagement");
+        }
+        catch
+        {
+            // Default to allowing on error
+        }
+    }
+
     public ChartViewModel ChartViewModel
     {
         get => _chartViewModel!;
@@ -159,6 +311,7 @@ public class MainViewModel : ViewModelBase
     public ICommand RemoveSavedServerCommand { get; }
     public ICommand RefreshCommand { get; }
     public ICommand OpenChangelogCommand { get; }
+    public ICommand OpenAdminManagementCommand { get; }
 
     public string CurrentUsername
     {
@@ -176,6 +329,58 @@ public class MainViewModel : ViewModelBase
     {
         get => _savedServers;
         set => SetProperty(ref _savedServers, value);
+    }
+
+    public int NotificationUnreadCount => _notificationService.GetUnreadCount();
+    public bool HasUnreadNotifications => NotificationUnreadCount > 0;
+
+    public bool IsManagerAdmin
+    {
+        get => _isManagerAdmin;
+        set => SetProperty(ref _isManagerAdmin, value);
+    }
+
+    public ICommand OpenNotificationsCommand { get; }
+    public ICommand OpenManagerAdminCommand { get; }
+    public ICommand OpenUserProfileCommand { get; }
+    public ICommand ViewTermsCommand { get; }
+    
+    // Navigation Properties
+    public ObservableCollection<NavigationItem> NavigationItems
+    {
+        get => _navigationItems;
+        set => SetProperty(ref _navigationItems, value);
+    }
+    
+    public NavigationItem? SelectedNavigationItem
+    {
+        get => _selectedNavigationItem;
+        set
+        {
+            if (SetProperty(ref _selectedNavigationItem, value))
+            {
+                SelectedView = value?.View;
+                
+                // If Dashboard is selected, try to refresh news if database service is available
+                if (value?.View is Views.DashboardView dashboardView && 
+                    dashboardView.DataContext is DashboardViewModel dashboardVM)
+                {
+                    // Try to update with database service if it wasn't available before
+                    if (_databaseService != null)
+                    {
+                        dashboardVM.SetDatabaseService(_databaseService);
+                        // Also reload news
+                        _ = dashboardVM.LoadNewsAsync();
+                    }
+                }
+            }
+        }
+    }
+    
+    public object? SelectedView
+    {
+        get => _selectedView;
+        set => SetProperty(ref _selectedView, value);
     }
 
     public SavedServer? SelectedSavedServer
@@ -285,6 +490,75 @@ public class MainViewModel : ViewModelBase
                 IsConnected = true;
                 AppendToLog(LocalizationHelper.GetString("connected"));
                 
+                // Initialize logging service
+                _loggingService = new LoggingService(_sshService, CurrentConnection);
+                await _loggingService.InitializeAsync();
+                await _loggingService.LogConnectionAsync(_currentUsername, CurrentConnection.Host, true);
+                
+                // Initialize admin service
+                _adminService = new AdminService(_sshService, CurrentConnection);
+                await _adminService.InitializeAsync();
+                await _adminService.EnsureFirstUserIsAdminAsync(_currentUsername);
+                
+                // Initialize database service and license service
+                if (_currentUser != null)
+                {
+                    try
+                    {
+                        if (_databaseService == null)
+                        {
+                            _databaseService = new DatabaseService(DatabaseConfiguration.GetConnectionString());
+                        }
+                        var licenseRepository = new Services.Repository.LicenseRepository(_databaseService);
+                        var serverRepository = new Services.Repository.ServerRepository(_databaseService);
+                        var userRepository = new Services.Repository.UserRepository(_databaseService);
+                        _licenseService = new LicenseService(licenseRepository, serverRepository, userRepository);
+                        
+                        // Validate license
+                        var licenseValidation = await _licenseService.ValidateLicenseAsync(_currentUser.Id);
+                        if (!licenseValidation.IsValid)
+                        {
+                            System.Windows.MessageBox.Show(
+                                $"License validation failed: {licenseValidation.ErrorMessage}",
+                                "License Error",
+                                System.Windows.MessageBoxButton.OK,
+                                System.Windows.MessageBoxImage.Warning);
+                        }
+                        
+                        // Start license validator
+                        _licenseValidator = new LicenseValidator(licenseRepository, _licenseService);
+                        _licenseValidator.LicenseValidationFailed += OnLicenseValidationFailed;
+                        _licenseValidator.Start(_currentUser.Id);
+                        
+                        // Update DashboardViewModel with database service if it was null before
+                        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                        {
+                            // Find DashboardView in navigation items
+                            foreach (var navItem in _navigationItems)
+                            {
+                                if (navItem.View is Views.DashboardView dashboardView)
+                                {
+                                    if (dashboardView.DataContext is DashboardViewModel oldVM)
+                                    {
+                                        // Try to set database service if it wasn't available before
+                                        oldVM.SetDatabaseService(_databaseService);
+                                        // Also reload news
+                                        _ = oldVM.LoadNewsAsync();
+                                        break;
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Failed to initialize license service: {ex.Message}");
+                    }
+                }
+                
+                // Load permissions
+                await LoadPermissionsAsync();
+                
                 // Set connection settings for monitoring service (needed for sudo commands)
                 _monitoringService.SetConnectionSettings(CurrentConnection);
                 
@@ -322,12 +596,16 @@ public class MainViewModel : ViewModelBase
     private void Disconnect()
     {
         _monitoringService.Stop();
+        if (_currentConnection != null && _loggingService != null)
+        {
+            _ = _loggingService.LogConnectionAsync(_currentUsername, _currentConnection.Host, false);
+        }
         _sshService.Disconnect();
         IsConnected = false;
         AppendToLog(LocalizationHelper.GetString("disconnected"));
     }
 
-    private async Task DiscoverServersAsync()
+    private async Task<List<ServerInstance>> DiscoverServersAsync()
     {
         try
         {
@@ -339,7 +617,7 @@ public class MainViewModel : ViewModelBase
                 Servers.Clear();
                 foreach (var server in discoveredServers)
                 {
-                    var viewModel = new ServerCardViewModel(server, _sshService, _monitoringService, _currentConnection);
+                    var viewModel = new ServerCardViewModel(server, _sshService, _monitoringService, _currentConnection, _loggingService, _currentUsername, _adminService, _notificationService, _currentUser);
                     Servers.Add(viewModel);
                 }
             });
@@ -352,10 +630,13 @@ public class MainViewModel : ViewModelBase
             {
                 AppendToLog($"{discoveredServers.Count} {LocalizationHelper.GetString("servers_discovered")}");
             }
+
+            return discoveredServers;
         }
         catch (Exception ex)
         {
             AppendToLog($"{LocalizationHelper.GetString("error")}: {ex.Message}");
+            return new List<ServerInstance>();
         }
     }
 
@@ -369,7 +650,7 @@ public class MainViewModel : ViewModelBase
             AppendToLog(LocalizationHelper.GetString("refreshing"));
             
             // Újrafelderítjük a szervereket
-            await DiscoverServersAsync();
+            var servers = await DiscoverServersAsync();
             
             // Újraindítjuk a monitoring-ot, hogy az új szervereket is figyelje
             _monitoringService.Stop();
@@ -397,6 +678,11 @@ public class MainViewModel : ViewModelBase
                 string command = $"cd {server.Model.DirectoryPath} && ./POK-manager.sh -{action} {server.Model.Name}";
                 await _sshService.ExecuteCommandAsync(command);
                 AppendToLog($"{server.Model.Name}: {LocalizationHelper.GetString(action)} {LocalizationHelper.GetString("success")}");
+                
+                if (_loggingService != null)
+                {
+                    await _loggingService.LogServerActionAsync(_currentUsername, LocalizationHelper.GetString(action.Replace("_all", "")), server.Model.Name);
+                }
                 
                 // 20 second delay between commands
                 await Task.Delay(TimeSpan.FromSeconds(20));
@@ -451,8 +737,46 @@ public class MainViewModel : ViewModelBase
         });
     }
 
-    private void OpenClusterManagement()
+    private async void OpenClusterManagement()
     {
+        // Check permission
+        if (_adminService != null && !string.IsNullOrEmpty(_currentUsername))
+        {
+            bool hasPermission = await _adminService.HasPermissionAsync(_currentUsername, "ClusterManagement");
+            if (!hasPermission)
+            {
+                System.Windows.MessageBox.Show(
+                    "You do not have permission to perform this action.",
+                    LocalizationHelper.GetString("error"),
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+        }
+
+        // Check license limits for cluster creation
+        if (_licenseService != null && _currentUser != null)
+        {
+            // Count existing clusters from database
+            if (_databaseService != null)
+            {
+                var serverRepository = new Services.Repository.ServerRepository(_databaseService);
+                var servers = await serverRepository.GetByUserIdAsync(_currentUser.Id);
+                var existingClusters = servers.Select(s => s.ClusterName).Where(c => !string.IsNullOrEmpty(c)).Distinct().Count();
+                
+                var licenseCheck = await _licenseService.CheckLicenseLimitsAsync(_currentUser.Id, clustersToAdd: 1);
+                if (!licenseCheck.IsValid)
+                {
+                    System.Windows.MessageBox.Show(
+                        licenseCheck.ErrorMessage ?? "License limit exceeded.",
+                        "License Limit",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Warning);
+                    return;
+                }
+            }
+        }
+
         System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
             string basePath = CurrentConnection?.ServerBasePath ?? string.Empty;
@@ -484,10 +808,44 @@ public class MainViewModel : ViewModelBase
         // Optionally load saved servers if auto-discovery fails
     }
 
-    private Task AddServerAsync()
+    private async Task AddServerAsync()
     {
         if (!IsConnected)
-            return Task.CompletedTask;
+            return;
+
+        // Check permission - ServerAdmin and ManagerAdmin have all permissions
+        if (_currentUser != null && (_currentUser.UserType == UserType.ManagerAdmin || _currentUser.UserType == UserType.ServerAdmin))
+        {
+            // ServerAdmin and ManagerAdmin have permission, continue
+        }
+        else if (_adminService != null && !string.IsNullOrEmpty(_currentUsername))
+        {
+            bool hasPermission = await _adminService.HasPermissionAsync(_currentUsername, "AddServer");
+            if (!hasPermission)
+            {
+                System.Windows.MessageBox.Show(
+                    "You do not have permission to perform this action.",
+                    LocalizationHelper.GetString("error"),
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+        }
+
+        // Check license limits
+        if (_licenseService != null && _currentUser != null)
+        {
+            var licenseCheck = await _licenseService.CheckLicenseLimitsAsync(_currentUser.Id, clustersToAdd: 0, serversToAdd: 1);
+            if (!licenseCheck.IsValid)
+            {
+                System.Windows.MessageBox.Show(
+                    licenseCheck.ErrorMessage ?? "License limit exceeded.",
+                    "License Limit",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+        }
 
         System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
@@ -503,11 +861,9 @@ public class MainViewModel : ViewModelBase
             if (result == true)
             {
                 // Refresh server list after adding
-                _ = DiscoverServersAsync();
+                _ = Task.Run(async () => await DiscoverServersAsync());
             }
         });
-
-        return Task.CompletedTask;
     }
 
     private async Task AddServerByPathAsync(string directoryPath)
@@ -556,12 +912,17 @@ public class MainViewModel : ViewModelBase
             // Add to collection
             System.Windows.Application.Current.Dispatcher.Invoke(() =>
             {
-                var viewModel = new ServerCardViewModel(server, _sshService, _monitoringService, _currentConnection);
+                var viewModel = new ServerCardViewModel(server, _sshService, _monitoringService, _currentConnection, _loggingService, _currentUsername, _adminService, _notificationService, _currentUser);
                 Servers.Add(viewModel);
             });
 
             // Save to settings
             SaveServersToSettings();
+
+            if (_loggingService != null)
+            {
+                await _loggingService.LogServerActionAsync(_currentUsername, LocalizationHelper.GetString("add_server"), folderName);
+            }
 
             AppendToLog($"{LocalizationHelper.GetString("server_added")}: {folderName}");
         }
@@ -575,6 +936,25 @@ public class MainViewModel : ViewModelBase
     {
         if (serverViewModel == null || !IsConnected)
             return;
+
+        // Check permission - ServerAdmin and ManagerAdmin have all permissions
+        if (_currentUser != null && (_currentUser.UserType == UserType.ManagerAdmin || _currentUser.UserType == UserType.ServerAdmin))
+        {
+            // ServerAdmin and ManagerAdmin have permission, continue
+        }
+        else if (_adminService != null && !string.IsNullOrEmpty(_currentUsername))
+        {
+            bool hasPermission = await _adminService.HasPermissionAsync(_currentUsername, "RemoveServer");
+            if (!hasPermission)
+            {
+                System.Windows.MessageBox.Show(
+                    "You do not have permission to perform this action.",
+                    LocalizationHelper.GetString("error"),
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+        }
 
         string directoryPath = serverViewModel.Model.DirectoryPath;
         string serverName = serverViewModel.Model.Name;
@@ -610,6 +990,11 @@ public class MainViewModel : ViewModelBase
 
                 // Save to settings
                 SaveServersToSettings();
+
+                if (_loggingService != null)
+                {
+                    await _loggingService.LogServerActionAsync(_currentUsername, LocalizationHelper.GetString("remove_server"), serverName);
+                }
 
                 AppendToLog($"{LocalizationHelper.GetString("server_removed")}: {serverName}");
                 AppendToLog($"{LocalizationHelper.GetString("directory_deleted")}: {directoryPath}");
@@ -898,6 +1283,158 @@ public class MainViewModel : ViewModelBase
         {
             System.Diagnostics.Debug.WriteLine($"Log hozzáadási hiba: {ex.Message}");
         }
+    }
+
+    private void OnServerStatusChanged(object? sender, MonitoringService.ServerStatusChangedEventArgs e)
+    {
+        try
+        {
+            if (e.OldStatus == Models.ServerStatus.Offline && e.NewStatus == Models.ServerStatus.Online)
+            {
+                _notificationService.ShowNotification(NotificationService.NotificationType.ServerStarted, e.ServerName);
+            }
+            else if (e.OldStatus == Models.ServerStatus.Online && e.NewStatus == Models.ServerStatus.Offline)
+            {
+                // Check if this was a scheduled shutdown completion
+                if (e.IsShutdownCompletion)
+                {
+                    _notificationService.ShowNotification(NotificationService.NotificationType.ShutdownCompleted, e.ServerName);
+                }
+                else
+                {
+                    _notificationService.ShowNotification(NotificationService.NotificationType.ServerStopped, e.ServerName);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Notification error: {ex.Message}");
+        }
+    }
+
+    public NotificationService NotificationService => _notificationService;
+
+    private void OnNotificationAdded(object? sender, NotificationService.NotificationItem notification)
+    {
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+        {
+            OnPropertyChanged(nameof(NotificationUnreadCount));
+            OnPropertyChanged(nameof(HasUnreadNotifications));
+        });
+    }
+
+    private void OpenNotifications()
+    {
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+        {
+            var notificationWindow = new Views.NotificationWindow(_notificationService);
+            notificationWindow.Owner = System.Windows.Application.Current.MainWindow;
+            notificationWindow.ShowDialog();
+            
+            // Refresh unread count after closing
+            OnPropertyChanged(nameof(NotificationUnreadCount));
+            OnPropertyChanged(nameof(HasUnreadNotifications));
+        });
+    }
+
+    private void OpenManagerAdmin()
+    {
+        try
+        {
+            if (_databaseService == null)
+            {
+                _databaseService = new DatabaseService(DatabaseConfiguration.GetConnectionString());
+            }
+            var viewModel = new ManagerAdminViewModel(_databaseService, _currentUser?.Id ?? Guid.Empty);
+            var window = new Views.ManagerAdminWindow(viewModel);
+            window.Owner = System.Windows.Application.Current.MainWindow;
+            window.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show(
+                $"Error opening Manager Admin: {ex.Message}",
+                LocalizationHelper.GetString("error"),
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Error);
+        }
+    }
+
+    private void OpenUserProfile()
+    {
+        if (_currentUser == null || _databaseService == null)
+        {
+            System.Windows.MessageBox.Show(
+                LocalizationHelper.GetString("user_not_loaded") ?? "User information not available.",
+                LocalizationHelper.GetString("error") ?? "Error",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Warning);
+            return;
+        }
+
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+        {
+            var profileWindow = new Views.UserProfileWindow(_currentUser, _databaseService);
+            profileWindow.Owner = System.Windows.Application.Current.MainWindow;
+            profileWindow.ShowDialog();
+        });
+    }
+    
+    private void ViewTerms()
+    {
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+        {
+            var termsWindow = new Views.TermsWindow();
+            termsWindow.Owner = System.Windows.Application.Current.MainWindow;
+            termsWindow.ShowDialog();
+        });
+    }
+    
+    private void OnLicenseValidationFailed(object? sender, LicenseValidationEventArgs e)
+    {
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+        {
+            System.Windows.MessageBox.Show(
+                $"License validation failed: {e.ErrorMessage}",
+                "License Error",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Warning);
+        });
+    }
+
+    private async void OpenAdminManagement()
+    {
+        if (_adminService == null || !IsConnected)
+        {
+            System.Windows.MessageBox.Show(
+                LocalizationHelper.GetString("disconnected"),
+                LocalizationHelper.GetString("error"),
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Warning);
+            return;
+        }
+
+        // Check if current user is server admin or manager admin
+        // ServerAdmin and ManagerAdmin can manage other admins
+        bool isServerAdmin = _currentUser?.UserType == UserType.ServerAdmin;
+        bool isManagerAdmin = _currentUser?.UserType == UserType.ManagerAdmin;
+        if (!isServerAdmin && !isManagerAdmin)
+        {
+            System.Windows.MessageBox.Show(
+                "Only server admins and manager admins can manage other admins.",
+                LocalizationHelper.GetString("error"),
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Warning);
+            return;
+        }
+
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+        {
+            var viewModel = new AdminManagementViewModel(_adminService, _loggingService, _currentUsername);
+            var adminWindow = new Views.AdminManagementWindow(viewModel);
+            adminWindow.Owner = System.Windows.Application.Current.MainWindow;
+            adminWindow.ShowDialog();
+        });
     }
 
 }
