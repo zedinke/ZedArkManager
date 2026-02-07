@@ -329,11 +329,33 @@ public class UpdateService
 
             // Create update script
             var scriptPath = Path.Combine(Path.GetTempPath(), "ZedASAManager-Update.bat");
+            var processId = Process.GetCurrentProcess().Id;
             var scriptContent = $@"@echo off
+REM Wait for the application to fully close (check if process is still running)
+:wait_loop
+tasklist /FI ""PID eq {processId}"" 2>NUL | find /I /N ""{processId}"">NUL
+if ""%ERRORLEVEL%""==""0"" (
+    timeout /t 1 /nobreak >nul
+    goto wait_loop
+)
+REM Additional wait to ensure all file handles are released
+timeout /t 3 /nobreak >nul
+REM Copy files with retry mechanism
+:copy_retry
+xcopy /Y /E /I /Q ""{extractFolder}\*"" ""{appDirectory}"" >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    timeout /t 1 /nobreak >nul
+    goto copy_retry
+)
+REM Verify that the main executable was updated
+if exist ""{exePath}"" (
+    REM Start the updated application
+    start """" ""{exePath}""
+)
+REM Clean up temporary files
 timeout /t 2 /nobreak >nul
-xcopy /Y /E /I ""{extractFolder}\*"" ""{appDirectory}""
-start """" ""{exePath}""
-del ""{scriptPath}""
+rmdir /S /Q ""{extractFolder}"" >nul 2>&1
+del ""{scriptPath}"" >nul 2>&1
 ";
 
             await File.WriteAllTextAsync(scriptPath, scriptContent);
