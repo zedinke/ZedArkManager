@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using System.Windows.Input;
 using ZedASAManager.Models;
 using ZedASAManager.Services;
@@ -84,7 +86,7 @@ public class ServerCardViewModel : ViewModelBase
             CanLiveLogs = true;
             CanDockerSetup = true;
             
-            // Notify property changes
+            // Notify property changes (SSH kulcs ellenőrzés automatikusan a property getter-ben történik)
             OnPropertyChanged(nameof(CanStart));
             OnPropertyChanged(nameof(CanStop));
             OnPropertyChanged(nameof(CanRestart));
@@ -106,7 +108,25 @@ public class ServerCardViewModel : ViewModelBase
         }
 
         if (_adminService == null || string.IsNullOrEmpty(_currentUsername))
+        {
+            // Még ha nincs admin service, akkor is ellenőrizni kell az SSH kulcsot
+            OnPropertyChanged(nameof(CanStart));
+            OnPropertyChanged(nameof(CanStop));
+            OnPropertyChanged(nameof(CanRestart));
+            OnPropertyChanged(nameof(CanUpdate));
+            OnPropertyChanged(nameof(CanShutdown));
+            OnPropertyChanged(nameof(CanBackup));
+            OnPropertyChanged(nameof(CanConfig));
+            OnPropertyChanged(nameof(CanLiveLogs));
+            OnPropertyChanged(nameof(CanDockerSetup));
+            ((RelayCommand)StartCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)StopCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)RestartCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)UpdateCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)ShutdownCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)BackupCommand).RaiseCanExecuteChanged();
             return;
+        }
 
         try
         {
@@ -120,7 +140,7 @@ public class ServerCardViewModel : ViewModelBase
             CanLiveLogs = await _adminService.HasPermissionAsync(_currentUsername, "LiveLogs");
             CanDockerSetup = await _adminService.HasPermissionAsync(_currentUsername, "DockerSetup");
             
-            // Notify property changes
+            // Notify property changes (SSH kulcs ellenőrzés automatikusan a property getter-ben történik)
             OnPropertyChanged(nameof(CanStart));
             OnPropertyChanged(nameof(CanStop));
             OnPropertyChanged(nameof(CanRestart));
@@ -176,15 +196,36 @@ public class ServerCardViewModel : ViewModelBase
     private bool _canLiveLogs = true;
     private bool _canDockerSetup = true;
 
-    public bool CanStart { get => _canStart; private set => SetProperty(ref _canStart, value); }
-    public bool CanStop { get => _canStop; private set => SetProperty(ref _canStop, value); }
-    public bool CanRestart { get => _canRestart; private set => SetProperty(ref _canRestart, value); }
-    public bool CanUpdate { get => _canUpdate; private set => SetProperty(ref _canUpdate, value); }
-    public bool CanShutdown { get => _canShutdown; private set => SetProperty(ref _canShutdown, value); }
-    public bool CanBackup { get => _canBackup; private set => SetProperty(ref _canBackup, value); }
-    public bool CanConfig { get => _canConfig; private set => SetProperty(ref _canConfig, value); }
-    public bool CanLiveLogs { get => _canLiveLogs; private set => SetProperty(ref _canLiveLogs, value); }
-    public bool CanDockerSetup { get => _canDockerSetup; private set => SetProperty(ref _canDockerSetup, value); }
+    // SSH kulcs ellenőrzés
+    private bool HasSshKey => _connectionSettings != null && 
+                              _connectionSettings.UseSshKey && 
+                              !string.IsNullOrEmpty(_connectionSettings.SshKeyPath) &&
+                              System.IO.File.Exists(_connectionSettings.SshKeyPath);
+
+    public bool CanStart { get => _canStart && HasSshKey; private set => SetProperty(ref _canStart, value); }
+    public bool CanStop { get => _canStop && HasSshKey; private set => SetProperty(ref _canStop, value); }
+    public bool CanRestart { get => _canRestart && HasSshKey; private set => SetProperty(ref _canRestart, value); }
+    public bool CanUpdate { get => _canUpdate && HasSshKey; private set => SetProperty(ref _canUpdate, value); }
+    public bool CanShutdown { get => _canShutdown && HasSshKey; private set => SetProperty(ref _canShutdown, value); }
+    public bool CanBackup { get => _canBackup && HasSshKey; private set => SetProperty(ref _canBackup, value); }
+    public bool CanConfig { get => _canConfig && HasSshKey; private set => SetProperty(ref _canConfig, value); }
+    public bool CanLiveLogs { get => _canLiveLogs && HasSshKey; private set => SetProperty(ref _canLiveLogs, value); }
+    public bool CanDockerSetup { get => _canDockerSetup && HasSshKey; private set => SetProperty(ref _canDockerSetup, value); }
+
+    // Helper metódus SSH kulcs ellenőrzéshez
+    private bool CheckSshKeyAndShowError()
+    {
+        if (!HasSshKey)
+        {
+            System.Windows.MessageBox.Show(
+                "SSH kulcs szükséges a művelet végrehajtásához!\n\nKérjük, használja a '🔑 SSH Kulcs' gombot a főmenüben az SSH kulcs generálásához és telepítéséhez.",
+                LocalizationHelper.GetString("error") ?? "Hiba",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Warning);
+            return false;
+        }
+        return true;
+    }
 
     private async Task<string> GetInstanceNameAsync()
     {
@@ -243,10 +284,19 @@ public class ServerCardViewModel : ViewModelBase
         if (IsBusy || !_sshService.IsConnected)
             return;
 
-        // Check permission - ServerAdmin and ManagerAdmin have all permissions
-        if (_currentUser != null && (_currentUser.UserType == UserType.ManagerAdmin || _currentUser.UserType == UserType.ServerAdmin))
+        // SSH kulcs ellenőrzés
+        if (!CheckSshKeyAndShowError())
+            return;
+
+        // ManagerAdmin has all permissions - no restrictions
+        if (_currentUser != null && _currentUser.UserType == UserType.ManagerAdmin)
         {
-            // ServerAdmin and ManagerAdmin have permission, continue
+            // ManagerAdmin has permission, continue
+        }
+        // ServerAdmin has all permissions
+        else if (_currentUser != null && _currentUser.UserType == UserType.ServerAdmin)
+        {
+            // ServerAdmin has permission, continue
         }
         else if (_adminService != null && !string.IsNullOrEmpty(_currentUsername))
         {
@@ -263,7 +313,12 @@ public class ServerCardViewModel : ViewModelBase
         }
 
         // Get instance name (without Instance_ prefix) - needed for confirmation dialog
-        string instanceName = await GetInstanceNameAsync();
+        string instanceName = ExtractInstanceName(Model.DirectoryPath);
+        // Remove "Instance_" prefix if present
+        if (instanceName.StartsWith("Instance_", StringComparison.OrdinalIgnoreCase))
+        {
+            instanceName = instanceName.Substring("Instance_".Length);
+        }
 
         // Show confirmation dialog for start action
         if (action == "start")
@@ -340,49 +395,144 @@ public class ServerCardViewModel : ViewModelBase
 
         try
         {
-            // Use the exact same format as MainViewModel which works
-            // For start and restart, add yes | for non-interactive mode and handle sudo password
+            // Ellenőrizzük és javítjuk a Docker jogosultságokat
+            var dockerPermissionService = new DockerPermissionService(_sshService);
+            
+            // Ellenőrizzük, hogy a Docker parancsok működnek-e sudo nélkül
+            bool dockerWorks = await dockerPermissionService.CheckDockerPermissionsAsync();
+            
+            if (!dockerWorks)
+            {
+                // Próbáljuk hozzáadni a felhasználót a docker csoporthoz
+                System.Diagnostics.Debug.WriteLine("Docker jogosultságok hiányoznak, próbáljuk javítani...");
+                bool added = await dockerPermissionService.EnsureUserInDockerGroupAsync();
+                
+                if (added)
+                {
+                    // Várunk egy kicsit, hogy a változások életbe lépjenek
+                    await Task.Delay(1000);
+                    
+                    // Újra ellenőrizzük
+                    dockerWorks = await dockerPermissionService.CheckDockerPermissionsAsync();
+                }
+                
+                // Ha még mindig nem működik, akkor a Docker parancsoknak sudo-val kell futniuk
+                // Ezt a POK-manager.sh script kezeli, de biztosítjuk, hogy a sudo használata aktív legyen
+                if (!dockerWorks)
+                {
+                    System.Diagnostics.Debug.WriteLine("Docker jogosultságok még mindig hiányoznak, a POK-manager.sh sudo-t fog használni.");
+                }
+            }
+            
+            // Ha a Docker parancsok nem működnek sudo nélkül, hozzunk létre egy wrapper scriptet
+            // ami automatikusan kezeli a Docker parancsokat sudo-val
+            if (!dockerWorks)
+            {
+                System.Diagnostics.Debug.WriteLine("Docker wrapper script létrehozása...");
+                string wrapperPath = await dockerPermissionService.CreateDockerWrapperScriptAsync(Model.DirectoryPath);
+                if (!string.IsNullOrEmpty(wrapperPath))
+                {
+                    System.Diagnostics.Debug.WriteLine($"Docker wrapper script létrehozva: {wrapperPath}");
+                }
+            }
+            
+            // Delete the Docker sudo config file to force POK-manager.sh to use sudo
+            // This ensures Docker commands work correctly
+            // The config file is in ServerFiles/arkserver/.config/POK-manager/docker_sudo_config
+            // or in the instance directory's .config/POK-manager/docker_sudo_config
+            string configFile1 = $"{Model.DirectoryPath}/ServerFiles/arkserver/.config/POK-manager/docker_sudo_config";
+            string configFile2 = $"{Model.DirectoryPath}/.config/POK-manager/docker_sudo_config";
+            try
+            {
+                // Remove both possible config file locations with sudo to ensure they're deleted
+                string deleteConfigCommand = $"rm -f \"{configFile1}\" \"{configFile2}\" 2>/dev/null || true";
+                await _sshService.ExecuteCommandAsync(deleteConfigCommand);
+            }
+            catch
+            {
+                // Ignore if files don't exist or can't be deleted
+            }
+            
+            // If Docker commands work without sudo, we don't need sudo for POK-manager.sh either
+            // Otherwise, use sudo (but try without -n first, as it requires sudoers config)
             string command;
+            string sudoPrefix = dockerWorks ? "" : "sudo ";
+            
             if (action == "start" || action == "restart")
             {
-                // Get sudo password if available (assume SSH password is same as sudo password)
-                string sudoPasswordPart = string.Empty;
-                if (_connectionSettings != null && !_connectionSettings.UseSshKey && !string.IsNullOrEmpty(_connectionSettings.EncryptedPassword))
+                // For start/restart, use yes | to automatically answer prompts
+                if (dockerWorks)
+                {
+                    // Docker works without sudo, so POK-manager.sh should also work without sudo
+                    command = $"cd {Model.DirectoryPath} && yes | ./POK-manager.sh -{action} {instanceName}";
+                }
+                else if (_connectionSettings != null && !_connectionSettings.UseSshKey && !string.IsNullOrEmpty(_connectionSettings.EncryptedPassword))
                 {
                     try
                     {
                         string password = EncryptionService.Decrypt(_connectionSettings.EncryptedPassword);
                         if (!string.IsNullOrEmpty(password))
                         {
-                            // Escape password for shell (replace single quotes with '\'' and wrap in single quotes)
+                            // Escape password for shell
                             string escapedPassword = password.Replace("'", "'\\''");
-                            // Use echo to pipe password to sudo -S, then run the command with yes | for POK-manager prompts
-                            // The format: echo 'password' | sudo -S bash -c "yes | ./POK-manager.sh ..."
-                            sudoPasswordPart = $"echo '{escapedPassword}' | sudo -S bash -c \"cd {Model.DirectoryPath} && yes | ./POK-manager.sh -{action} {instanceName}\"";
+                            // Use echo to pipe password to sudo -S
+                            string escapedDir = Model.DirectoryPath.Replace("'", "'\\''");
+                            command = $"cd {Model.DirectoryPath} && echo '{escapedPassword}' | sudo -S bash -c 'cd \"{escapedDir}\" && yes | sudo ./POK-manager.sh -{action} {instanceName}'";
+                        }
+                        else
+                        {
+                            // Try sudo -n (non-interactive, requires sudoers config)
+                            command = $"cd {Model.DirectoryPath} && yes | sudo -n ./POK-manager.sh -{action} {instanceName}";
                         }
                     }
                     catch
                     {
-                        // If password decryption fails, try without sudo password
+                        // If password decryption fails, try sudo -n
+                        command = $"cd {Model.DirectoryPath} && yes | sudo -n ./POK-manager.sh -{action} {instanceName}";
                     }
-                }
-                
-                // Use yes | to automatically answer prompts (non-interactive mode)
-                // If sudo password is available, use it; otherwise try sudo -n (non-interactive, requires sudoers config)
-                if (string.IsNullOrEmpty(sudoPasswordPart))
-                {
-                    // Try sudo -n first (non-interactive, requires sudoers config)
-                    // If that fails, try without sudo (POK-manager.sh might handle sudo internally)
-                    command = $"cd {Model.DirectoryPath} && (yes | sudo -n ./POK-manager.sh -{action} {instanceName} 2>&1 || yes | ./POK-manager.sh -{action} {instanceName})";
                 }
                 else
                 {
-                    command = sudoPasswordPart;
+                    // SSH key: use sudo -n (non-interactive, requires sudoers config)
+                    // The sudoers file should have: username ALL=(ALL) NOPASSWD:ALL
+                    // This allows passwordless sudo for all commands
+                    command = $"cd {Model.DirectoryPath} && yes | sudo -n ./POK-manager.sh -{action} {instanceName}";
                 }
             }
             else
             {
-                command = $"cd {Model.DirectoryPath} && ./POK-manager.sh -{action} {instanceName}";
+                // For other actions (stop, etc.), no need for yes |
+                if (dockerWorks)
+                {
+                    // Docker works without sudo, so POK-manager.sh should also work without sudo
+                    command = $"cd {Model.DirectoryPath} && ./POK-manager.sh -{action} {instanceName}";
+                }
+                else if (_connectionSettings != null && !_connectionSettings.UseSshKey && !string.IsNullOrEmpty(_connectionSettings.EncryptedPassword))
+                {
+                    try
+                    {
+                        string password = EncryptionService.Decrypt(_connectionSettings.EncryptedPassword);
+                        if (!string.IsNullOrEmpty(password))
+                        {
+                            string escapedPassword = password.Replace("'", "'\\''");
+                            string escapedDir = Model.DirectoryPath.Replace("'", "'\\''");
+                            command = $"cd {Model.DirectoryPath} && echo '{escapedPassword}' | sudo -S bash -c 'cd \"{escapedDir}\" && sudo ./POK-manager.sh -{action} {instanceName}'";
+                        }
+                        else
+                        {
+                            command = $"cd {Model.DirectoryPath} && sudo -n ./POK-manager.sh -{action} {instanceName}";
+                        }
+                    }
+                    catch
+                    {
+                        command = $"cd {Model.DirectoryPath} && sudo -n ./POK-manager.sh -{action} {instanceName}";
+                    }
+                }
+                else
+                {
+                    // SSH key: try sudo -n first
+                    command = $"cd {Model.DirectoryPath} && sudo -n ./POK-manager.sh -{action} {instanceName}";
+                }
             }
             
             System.Diagnostics.Debug.WriteLine($"Executing command: {command}");
@@ -399,6 +549,64 @@ public class ServerCardViewModel : ViewModelBase
                 // For restart, we need to wait a bit between stop and start
                 // But since we're using a single command, the script handles it
                 await Task.Delay(TimeSpan.FromSeconds(2));
+            }
+            
+            // For start and restart actions, verify that the container actually started
+            if (action == "start" || action == "restart")
+            {
+                // Wait a bit for the container to start
+                await Task.Delay(TimeSpan.FromSeconds(3));
+                
+                // Check if the container is running
+                // instanceName is already declared above, just use it
+                
+                string containerName = $"asa_{instanceName}";
+                string checkCommand = $"docker ps --filter 'name=^{containerName}$' --format '{{{{.Names}}}}' 2>/dev/null || sudo docker ps --filter 'name=^{containerName}$' --format '{{{{.Names}}}}' 2>/dev/null || echo ''";
+                
+                string containerCheck = await _sshService.ExecuteCommandAsync(checkCommand);
+                
+                if (string.IsNullOrWhiteSpace(containerCheck) || !containerCheck.Trim().Contains(containerName))
+                {
+                    // Container didn't start, show error message
+                    string errorMessage = $"A szerver indítása sikertelen volt.\n\n";
+                    if (!string.IsNullOrEmpty(result))
+                    {
+                        // Extract error messages from the result
+                        var errorLines = result.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+                            .Where(line => line.Contains("ERROR", StringComparison.OrdinalIgnoreCase) || 
+                                          line.Contains("error", StringComparison.OrdinalIgnoreCase) ||
+                                          line.Contains("failed", StringComparison.OrdinalIgnoreCase))
+                            .Take(5)
+                            .ToArray();
+                        
+                        if (errorLines.Length > 0)
+                        {
+                            errorMessage += "Hibák:\n" + string.Join("\n", errorLines);
+                        }
+                        else
+                        {
+                            errorMessage += "Parancs kimenet:\n" + result.Substring(0, Math.Min(500, result.Length));
+                        }
+                    }
+                    else
+                    {
+                        errorMessage += "A konténer nem indult el. Ellenőrizd a szerver logokat.";
+                    }
+                    
+                    System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        System.Windows.MessageBox.Show(
+                            errorMessage,
+                            "Szerver indítási hiba",
+                            System.Windows.MessageBoxButton.OK,
+                            System.Windows.MessageBoxImage.Error);
+                    });
+                }
+                else
+                {
+                    // Container started successfully
+                    System.Diagnostics.Debug.WriteLine($"Container {containerName} started successfully");
+                }
             }
 
             // Log action
@@ -429,10 +637,19 @@ public class ServerCardViewModel : ViewModelBase
         if (IsBusy || !_sshService.IsConnected)
             return;
 
-        // Check permission - ServerAdmin and ManagerAdmin have all permissions
-        if (_currentUser != null && (_currentUser.UserType == UserType.ManagerAdmin || _currentUser.UserType == UserType.ServerAdmin))
+        // SSH kulcs ellenőrzés
+        if (!CheckSshKeyAndShowError())
+            return;
+
+        // ManagerAdmin has all permissions - no restrictions
+        if (_currentUser != null && _currentUser.UserType == UserType.ManagerAdmin)
         {
-            // ServerAdmin and ManagerAdmin have permission, continue
+            // ManagerAdmin has permission, continue
+        }
+        // ServerAdmin has all permissions
+        else if (_currentUser != null && _currentUser.UserType == UserType.ServerAdmin)
+        {
+            // ServerAdmin has permission, continue
         }
         else if (_adminService != null && !string.IsNullOrEmpty(_currentUsername))
         {
@@ -449,7 +666,12 @@ public class ServerCardViewModel : ViewModelBase
         }
 
         // Get instance name (without Instance_ prefix) - needed for confirmation dialog
-        string instanceName = await GetInstanceNameAsync();
+        string instanceName = ExtractInstanceName(Model.DirectoryPath);
+        // Remove "Instance_" prefix if present
+        if (instanceName.StartsWith("Instance_", StringComparison.OrdinalIgnoreCase))
+        {
+            instanceName = instanceName.Substring("Instance_".Length);
+        }
 
         // Show confirmation dialog for stop action
         string pokManagerPath = $"{Model.DirectoryPath}/POK-manager.sh";
@@ -565,10 +787,19 @@ public class ServerCardViewModel : ViewModelBase
         if (IsBusy || !_sshService.IsConnected)
             return;
 
-        // Check permission - ServerAdmin and ManagerAdmin have all permissions
-        if (_currentUser != null && (_currentUser.UserType == UserType.ManagerAdmin || _currentUser.UserType == UserType.ServerAdmin))
+        // SSH kulcs ellenőrzés
+        if (!CheckSshKeyAndShowError())
+            return;
+
+        // ManagerAdmin has all permissions - no restrictions
+        if (_currentUser != null && _currentUser.UserType == UserType.ManagerAdmin)
         {
-            // ServerAdmin and ManagerAdmin have permission, continue
+            // ManagerAdmin has permission, continue
+        }
+        // ServerAdmin has all permissions
+        else if (_currentUser != null && _currentUser.UserType == UserType.ServerAdmin)
+        {
+            // ServerAdmin has permission, continue
         }
         else if (_adminService != null && !string.IsNullOrEmpty(_currentUsername))
         {
@@ -585,7 +816,12 @@ public class ServerCardViewModel : ViewModelBase
         }
 
         // Get instance name (without Instance_ prefix) - needed for confirmation dialog
-        string instanceName = await GetInstanceNameAsync();
+        string instanceName = ExtractInstanceName(Model.DirectoryPath);
+        // Remove "Instance_" prefix if present
+        if (instanceName.StartsWith("Instance_", StringComparison.OrdinalIgnoreCase))
+        {
+            instanceName = instanceName.Substring("Instance_".Length);
+        }
 
         // Show input dialog for shutdown time
         var inputDialog = new System.Windows.Window
@@ -754,10 +990,19 @@ public class ServerCardViewModel : ViewModelBase
         if (IsBusy || !_sshService.IsConnected)
             return;
 
-        // Check permission - ServerAdmin and ManagerAdmin have all permissions
-        if (_currentUser != null && (_currentUser.UserType == UserType.ManagerAdmin || _currentUser.UserType == UserType.ServerAdmin))
+        // SSH kulcs ellenőrzés
+        if (!CheckSshKeyAndShowError())
+            return;
+
+        // ManagerAdmin has all permissions - no restrictions
+        if (_currentUser != null && _currentUser.UserType == UserType.ManagerAdmin)
         {
-            // ServerAdmin and ManagerAdmin have permission, continue
+            // ManagerAdmin has permission, continue
+        }
+        // ServerAdmin has all permissions
+        else if (_currentUser != null && _currentUser.UserType == UserType.ServerAdmin)
+        {
+            // ServerAdmin has permission, continue
         }
         else if (_adminService != null && !string.IsNullOrEmpty(_currentUsername))
         {
@@ -787,16 +1032,34 @@ public class ServerCardViewModel : ViewModelBase
         }
 
         int shutdownDelayMinutes = delayWindow.ShutdownDelayMinutes;
+        bool useStopInsteadOfShutdown = delayWindow.UseStopInsteadOfShutdown;
 
-        // Show confirmation dialog
-        string message = $"{Utilities.LocalizationHelper.GetString("update_server_confirmation") ?? "Are you sure you want to update the server"} '{instanceName}'?\n\n" +
-                        $"{Utilities.LocalizationHelper.GetString("update_process_steps") ?? "This will:"}\n" +
-                        $"1. {Utilities.LocalizationHelper.GetString("schedule_shutdown") ?? "Schedule shutdown"} ({shutdownDelayMinutes} {Utilities.LocalizationHelper.GetString("minutes") ?? "minutes"})\n" +
-                        $"2. {Utilities.LocalizationHelper.GetString("wait_for_shutdown") ?? "Wait for shutdown to complete"}\n" +
-                        $"3. {Utilities.LocalizationHelper.GetString("run_update_command") ?? "Run the update command"} ({Utilities.LocalizationHelper.GetString("live_output") ?? "you can watch the live output"})\n" +
-                        $"4. {Utilities.LocalizationHelper.GetString("wait_before_restart") ?? "Wait 10 minutes"}\n" +
-                        $"5. {Utilities.LocalizationHelper.GetString("start_server_again") ?? "Start the server again"}\n\n" +
-                        $"{Utilities.LocalizationHelper.GetString("continue_question") ?? "Do you want to continue?"}";
+        // Show confirmation dialog - different message for immediate vs delayed update
+        string message;
+        
+        if (useStopInsteadOfShutdown)
+        {
+            // Immediate update confirmation
+            message = $"{Utilities.LocalizationHelper.GetString("update_server_confirmation") ?? "Are you sure you want to update the server"} '{instanceName}'?\n\n" +
+                     $"{Utilities.LocalizationHelper.GetString("update_process_steps_immediate") ?? "This will:"}\n" +
+                     $"1. {Utilities.LocalizationHelper.GetString("stop_server") ?? "Stop server"}\n" +
+                     $"2. {Utilities.LocalizationHelper.GetString("run_update_command") ?? "Run the update command"} ({Utilities.LocalizationHelper.GetString("live_output") ?? "you can watch the live output"})\n" +
+                     $"3. {Utilities.LocalizationHelper.GetString("start_server_again") ?? "Start the server again"}\n\n" +
+                     $"{Utilities.LocalizationHelper.GetString("immediate_update_note") ?? "Note: No waiting time, the update will start immediately after the server stops."}\n\n" +
+                     $"{Utilities.LocalizationHelper.GetString("continue_question") ?? "Do you want to continue?"}";
+        }
+        else
+        {
+            // Delayed update confirmation (original)
+            message = $"{Utilities.LocalizationHelper.GetString("update_server_confirmation") ?? "Are you sure you want to update the server"} '{instanceName}'?\n\n" +
+                     $"{Utilities.LocalizationHelper.GetString("update_process_steps") ?? "This will:"}\n" +
+                     $"1. {Utilities.LocalizationHelper.GetString("schedule_shutdown") ?? "Schedule shutdown"} ({shutdownDelayMinutes} {Utilities.LocalizationHelper.GetString("minutes") ?? "minutes"})\n" +
+                     $"2. {Utilities.LocalizationHelper.GetString("wait_for_shutdown") ?? "Wait for shutdown to complete"}\n" +
+                     $"3. {Utilities.LocalizationHelper.GetString("run_update_command") ?? "Run the update command"} ({Utilities.LocalizationHelper.GetString("live_output") ?? "you can watch the live output"})\n" +
+                     $"4. {Utilities.LocalizationHelper.GetString("wait_before_restart") ?? "Wait 10 minutes"}\n" +
+                     $"5. {Utilities.LocalizationHelper.GetString("start_server_again") ?? "Start the server again"}\n\n" +
+                     $"{Utilities.LocalizationHelper.GetString("continue_question") ?? "Do you want to continue?"}";
+        }
 
         var result = System.Windows.MessageBox.Show(
             message,
@@ -816,7 +1079,7 @@ public class ServerCardViewModel : ViewModelBase
         try
         {
             // Open update window with live output and shutdown delay
-            var updateWindow = new Views.UpdateServerWindow(_sshService, Model.DirectoryPath, instanceName, shutdownDelayMinutes);
+            var updateWindow = new Views.UpdateServerWindow(_sshService, Model.DirectoryPath, instanceName, shutdownDelayMinutes, useStopInsteadOfShutdown);
             updateWindow.Owner = System.Windows.Application.Current.MainWindow;
             updateWindow.Show();
 
@@ -853,10 +1116,19 @@ public class ServerCardViewModel : ViewModelBase
         if (IsBusy || !_sshService.IsConnected)
             return;
 
-        // Check permission - ServerAdmin and ManagerAdmin have all permissions
-        if (_currentUser != null && (_currentUser.UserType == UserType.ManagerAdmin || _currentUser.UserType == UserType.ServerAdmin))
+        // SSH kulcs ellenőrzés
+        if (!CheckSshKeyAndShowError())
+            return;
+
+        // ManagerAdmin has all permissions - no restrictions
+        if (_currentUser != null && _currentUser.UserType == UserType.ManagerAdmin)
         {
-            // ServerAdmin and ManagerAdmin have permission, continue
+            // ManagerAdmin has permission, continue
+        }
+        // ServerAdmin has all permissions
+        else if (_currentUser != null && _currentUser.UserType == UserType.ServerAdmin)
+        {
+            // ServerAdmin has permission, continue
         }
         else if (_adminService != null && !string.IsNullOrEmpty(_currentUsername))
         {
@@ -873,8 +1145,14 @@ public class ServerCardViewModel : ViewModelBase
         }
 
         // Get instance name (without Instance_ prefix)
-        string instanceName = await GetInstanceNameAsync();
-        string containerName = $"asa_{instanceName}";
+        string instanceName = ExtractInstanceName(Model.DirectoryPath);
+        // Remove "Instance_" prefix if present
+        if (instanceName.StartsWith("Instance_", StringComparison.OrdinalIgnoreCase))
+        {
+            instanceName = instanceName.Substring("Instance_".Length);
+        }
+        // Note: POK-manager.sh expects instance name without Instance_ prefix
+        string containerName = instanceName;
 
         // Show confirmation dialog for backup action
         string pokManagerPath = $"{Model.DirectoryPath}/POK-manager.sh";
@@ -894,57 +1172,19 @@ public class ServerCardViewModel : ViewModelBase
             return;
         }
 
-        // Show status window
-        var statusWindow = new Views.StopServerWindow();
-        statusWindow.Owner = System.Windows.Application.Current.MainWindow;
-        statusWindow.Title = LocalizationHelper.GetString("backup");
-        statusWindow.Show();
-
         IsBusy = true;
         Model.Status = ServerStatus.Busy;
         OnPropertyChanged(nameof(Status));
 
         try
         {
-            statusWindow.UpdateStatus(LocalizationHelper.GetString("creating_backup"));
-            
-            // Get sudo password if available (same logic as start command)
-            string backupCommand;
-            string sudoPasswordPart = string.Empty;
-            
-            if (_connectionSettings != null && !_connectionSettings.UseSshKey && !string.IsNullOrEmpty(_connectionSettings.EncryptedPassword))
-            {
-                try
-                {
-                    string password = EncryptionService.Decrypt(_connectionSettings.EncryptedPassword);
-                    if (!string.IsNullOrEmpty(password))
-                    {
-                        string escapedPassword = password.Replace("'", "'\\''");
-                        sudoPasswordPart = $"echo '{escapedPassword}' | sudo -S bash -c \"cd {Model.DirectoryPath} && ./POK-manager.sh -backup {containerName}\"";
-                    }
-                }
-                catch
-                {
-                    // If password decryption fails, try without sudo password
-                }
-            }
-            
-            if (string.IsNullOrEmpty(sudoPasswordPart))
-            {
-                backupCommand = $"cd {Model.DirectoryPath} && (sudo -n ./POK-manager.sh -backup {containerName} 2>&1 || ./POK-manager.sh -backup {containerName})";
-            }
-            else
-            {
-                backupCommand = sudoPasswordPart;
-            }
-            
-            System.Diagnostics.Debug.WriteLine($"Executing backup command: {backupCommand}");
-            string commandResult = await _sshService.ExecuteCommandAsync(backupCommand);
-            System.Diagnostics.Debug.WriteLine($"Backup command result: {commandResult}");
+            // Open backup window with live output
+            var backupWindow = new Views.BackupServerWindow(_sshService, Model.DirectoryPath, containerName, _connectionSettings);
+            backupWindow.Owner = System.Windows.Application.Current.MainWindow;
+            backupWindow.Show();
 
-            // Update status window
-            statusWindow.UpdateStatus(LocalizationHelper.GetString("backup_created"));
-            statusWindow.SetCompleted();
+            // Start backup process
+            await backupWindow.StartBackupAsync();
 
             // Log action
             if (_loggingService != null && !string.IsNullOrEmpty(_currentUsername))
@@ -957,13 +1197,16 @@ public class ServerCardViewModel : ViewModelBase
             System.Diagnostics.Debug.WriteLine($"Backup hiba: {ex.Message}");
             System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
             
-            statusWindow.UpdateStatus($"{LocalizationHelper.GetString("error")}: {ex.Message}");
-            statusWindow.SetCompleted();
+            System.Windows.MessageBox.Show(
+                $"{LocalizationHelper.GetString("backup_error") ?? "Backup error"}: {ex.Message}",
+                LocalizationHelper.GetString("error"),
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Error);
         }
         finally
         {
             IsBusy = false;
-            OnPropertyChanged(nameof(IsBusy));
+            OnPropertyChanged(nameof(Status));
         }
     }
 
@@ -1010,6 +1253,10 @@ public class ServerCardViewModel : ViewModelBase
     {
         try
         {
+            // SSH kulcs ellenőrzés
+            if (!CheckSshKeyAndShowError())
+                return;
+
             // Check permission - ServerAdmin and ManagerAdmin have all permissions
             if (_currentUser != null && (_currentUser.UserType == UserType.ManagerAdmin || _currentUser.UserType == UserType.ServerAdmin))
             {
@@ -1079,6 +1326,10 @@ public class ServerCardViewModel : ViewModelBase
     {
         try
         {
+            // SSH kulcs ellenőrzés
+            if (!CheckSshKeyAndShowError())
+                return;
+
             // Check permission - ServerAdmin and ManagerAdmin have all permissions
             if (_currentUser != null && (_currentUser.UserType == UserType.ManagerAdmin || _currentUser.UserType == UserType.ServerAdmin))
             {
@@ -1142,6 +1393,10 @@ public class ServerCardViewModel : ViewModelBase
     {
         try
         {
+            // SSH kulcs ellenőrzés
+            if (!CheckSshKeyAndShowError())
+                return;
+
             // Check permission - ServerAdmin and ManagerAdmin have all permissions
             if (_currentUser != null && (_currentUser.UserType == UserType.ManagerAdmin || _currentUser.UserType == UserType.ServerAdmin))
             {
@@ -1172,7 +1427,12 @@ public class ServerCardViewModel : ViewModelBase
             }
 
             // Get instance name
-            string instanceName = await GetInstanceNameAsync();
+            string instanceName = ExtractInstanceName(_model.DirectoryPath);
+            // Remove "Instance_" prefix if present
+            if (instanceName.StartsWith("Instance_", StringComparison.OrdinalIgnoreCase))
+            {
+                instanceName = instanceName.Substring("Instance_".Length);
+            }
             
             if (string.IsNullOrEmpty(instanceName))
             {
@@ -1199,6 +1459,33 @@ public class ServerCardViewModel : ViewModelBase
                 System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Error);
         }
+    }
+
+    private string ExtractInstanceName(string directoryPath)
+    {
+        // Extract instance name from directory path
+        // Example: /home/user/asa_server/Cluster_Name_servermappaneve -> servermappaneve
+        string instanceName = directoryPath.Contains('/')
+            ? directoryPath.Substring(directoryPath.LastIndexOf('/') + 1)
+            : directoryPath;
+
+        // If the name contains underscores, try to extract the last part
+        if (instanceName.Contains('_'))
+        {
+            string[] parts = instanceName.Split('_');
+            if (parts.Length > 1)
+            {
+                instanceName = parts[parts.Length - 1];
+            }
+        }
+
+        // Remove "Instance_" prefix if present
+        if (instanceName.StartsWith("Instance_", StringComparison.OrdinalIgnoreCase))
+        {
+            instanceName = instanceName.Substring("Instance_".Length);
+        }
+
+        return instanceName;
     }
 }
 
